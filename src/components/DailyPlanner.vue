@@ -42,7 +42,7 @@ function formatTimestamp(value: string) {
 }
 
 const selectedDate = ref(todayKey());
-const viewMode = ref<"day" | "month">("day");
+const viewMode = ref<"day" | "month">("month");
 const dayRecord = ref<DayRecord>(createEmptyDay(selectedDate.value));
 const loading = ref(true);
 const monthLoading = ref(true);
@@ -155,11 +155,30 @@ function getAsignadoSelectOptions(currentValue: string) {
   return [currentValue, ...asignadoOptions.value];
 }
 
+function cloneRecord(record: DayRecord): DayRecord {
+  return {
+    ...record,
+    entries: record.entries.map((entry) => ({ ...entry })),
+  };
+}
+
+function syncMonthRecord(record: DayRecord) {
+  if (!record.dateKey.startsWith(`${monthKey.value}-`)) {
+    return;
+  }
+
+  monthRecords.value = {
+    ...monthRecords.value,
+    [record.dateKey]: cloneRecord(record),
+  };
+}
+
 async function persistDay() {
   savingState.value = "saving";
 
   try {
     dayRecord.value = await saveDay(dayRecord.value);
+    syncMonthRecord(dayRecord.value);
     savingState.value = "saved";
   } catch (error) {
     console.error(error);
@@ -207,6 +226,7 @@ async function loadSelectedDay(dateKey = selectedDate.value) {
     }
 
     dayRecord.value = record;
+    syncMonthRecord(record);
     savingState.value = "idle";
   } finally {
     if (requestId === dayLoadRequest) {
@@ -286,19 +306,21 @@ function summarizeDay(record: DayRecord | null) {
     };
   }
 
-  const preview = record.entries
-    .slice(0, 3)
-    .map(
-      (entry) =>
-        entry.asignado ||
-        entry.referencia ||
-        entry.localidad ||
-        "Entrada sin titulo",
-    );
+  const preview = record.entries.slice(0, 3).map((entry) => ({
+    id: entry.id,
+    referencia: entry.referencia.trim() || "Sin referencia",
+    localidad: entry.localidad.trim() || "Sin localidad",
+    plano:
+      entry.plano === "si"
+        ? "Con planos"
+        : entry.plano === "no"
+          ? "Sin planos"
+          : "Sin planos",
+  }));
 
   return {
     countLabel: `${record.entries.length} ${
-      record.entries.length === 1 ? "entrada" : "entradas"
+      record.entries.length === 1 ? "informe" : "informes"
     }`,
     preview,
     extraCount: Math.max(0, record.entries.length - preview.length),
@@ -370,6 +392,7 @@ watch(selectedDate, (nextDate, previousDate) => {
 watch(
   dayRecord,
   () => {
+    syncMonthRecord(dayRecord.value);
     queueSave();
   },
   { deep: true },
@@ -546,9 +569,11 @@ onMounted(() => {
                 >
                   <li
                     v-for="item in summarizeDay(cell.record).preview"
-                    :key="item"
+                    :key="item.id"
                   >
-                    {{ item }}
+                    <em>Ref. {{ item.referencia }}</em>
+                    <span>{{ item.localidad }}</span>
+                    <em>{{ item.plano }}</em>
                   </li>
                 </ul>
                 <span
@@ -565,7 +590,7 @@ onMounted(() => {
 
       <div v-else class="sheet-table-wrap">
         <div v-if="dayRecord.entries.length === 0" class="empty-day">
-          <p class="empty-day__title">Este dia no tiene filas.</p>
+          <p class="empty-day__title">Este día no tiene informes.</p>
           <p class="empty-day__copy">
             Puedes dejarlo vacio o crear una nueva fila cuando la necesites.
           </p>
@@ -583,7 +608,7 @@ onMounted(() => {
             <div class="row-topbar">
               <span class="row-marker">{{ index + 1 }}</span>
               <div class="row-status">
-                <strong>{{ entry.referencia || "Sin referencia" }}</strong>
+                <strong>Ref. {{ entry.referencia || "Sin referencia" }}</strong>
               </div>
               <button
                 class="inline-remove"
@@ -595,6 +620,11 @@ onMounted(() => {
             </div>
 
             <div class="sheet-grid sheet-grid--body">
+              <label class="field">
+                <span class="field-label">Referencia:</span>
+                <input v-model="entry.referencia" type="text" />
+              </label>
+
               <label class="field">
                 <span class="field-label">Asignado:</span>
                 <select v-model="entry.asignado">
@@ -616,17 +646,11 @@ onMounted(() => {
               </label>
 
               <label class="field">
-                <span class="field-label">Plano:</span>
+                <span class="field-label">Planos:</span>
                 <select v-model="entry.plano">
-                  <option value="">Pendiente:</option>
                   <option value="si">Si</option>
                   <option value="no">No</option>
                 </select>
-              </label>
-
-              <label class="field">
-                <span class="field-label">Referencia:</span>
-                <input v-model="entry.referencia" type="text" />
               </label>
 
               <label class="field">

@@ -695,11 +695,36 @@ button {
 }
 
 .month-card__list li {
+  display: grid;
+  gap: 2px;
+  padding: 8px 9px;
+  border-radius: 12px;
+  background: rgba(31, 107, 90, 0.08);
+}
+
+.month-card__list strong,
+.month-card__list span,
+.month-card__list em {
   overflow: hidden;
-  font-size: 0.88rem;
-  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.month-card__list strong {
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.month-card__list span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.month-card__list em {
+  color: var(--accent-strong);
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 700;
 }
 
 .month-card__more {
