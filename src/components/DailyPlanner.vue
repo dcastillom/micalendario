@@ -571,7 +571,7 @@ onMounted(() => {
                     v-for="item in summarizeDay(cell.record).preview"
                     :key="item.id"
                   >
-                    <em>Ref. {{ item.referencia }}</em>
+                    <em>{{ item.referencia }}</em>
                     <span>{{ item.localidad }}</span>
                     <em>{{ item.plano }}</em>
                   </li>
@@ -608,7 +608,7 @@ onMounted(() => {
             <div class="row-topbar">
               <span class="row-marker">{{ index + 1 }}</span>
               <div class="row-status">
-                <strong>Ref. {{ entry.referencia || "Sin referencia" }}</strong>
+                <strong>{{ entry.referencia || "Sin referencia" }}</strong>
               </div>
               <button
                 class="inline-remove"
