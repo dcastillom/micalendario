@@ -34,6 +34,7 @@ app.whenReady().then(() => {
   plannerStore = new PlannerStore(app);
 
   ipcMain.handle("planner:get-day", (_event, dateKey) => plannerStore.getDay(dateKey));
+  ipcMain.handle("planner:get-days-for-month", (_event, monthKey) => plannerStore.getDaysForMonth(monthKey));
   ipcMain.handle("planner:save-day", (_event, record) => plannerStore.saveDay(record));
   ipcMain.handle("planner:get-settings", () => plannerStore.getSettings());
   ipcMain.handle("planner:save-settings", (_event, settings) => plannerStore.saveSettings(settings));

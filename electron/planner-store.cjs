@@ -73,6 +73,14 @@ class PlannerStore {
     return this.data.days[dateKey] ? clone(this.data.days[dateKey]) : null;
   }
 
+  getDaysForMonth(monthKey) {
+    return clone(
+      Object.fromEntries(
+        Object.entries(this.data.days).filter(([dateKey]) => dateKey.startsWith(`${monthKey}-`))
+      )
+    );
+  }
+
   saveDay(record) {
     this.data.days[record.dateKey] = clone(record);
     this.persist();

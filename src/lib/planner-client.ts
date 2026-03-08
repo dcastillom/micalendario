@@ -145,6 +145,22 @@ export async function loadDay(dateKey: string): Promise<DayRecord> {
   return normalizeRecord(days[dateKey] ?? createEmptyDay(dateKey));
 }
 
+export async function loadDaysForMonth(monthKey: string): Promise<Record<string, DayRecord>> {
+  if (typeof window !== "undefined" && window.desktopPlanner) {
+    const days = await window.desktopPlanner.getDaysForMonth(monthKey);
+    return Object.fromEntries(
+      Object.entries(days).map(([dateKey, record]) => [dateKey, normalizeRecord(record)])
+    );
+  }
+
+  const days = readBrowserStore();
+  return Object.fromEntries(
+    Object.entries(days)
+      .filter(([dateKey]) => dateKey.startsWith(`${monthKey}-`))
+      .map(([dateKey, record]) => [dateKey, normalizeRecord(record)])
+  );
+}
+
 export async function saveDay(record: DayRecord): Promise<DayRecord> {
   const normalized = normalizeRecord({
     ...record,

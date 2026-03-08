@@ -5,6 +5,7 @@ import {
   createEmptyEntry,
   createEmptyDay,
   loadDay,
+  loadDaysForMonth,
   loadSettings,
   saveDay,
   saveSettings,
@@ -41,18 +42,92 @@ function formatTimestamp(value: string) {
 }
 
 const selectedDate = ref(todayKey());
+const viewMode = ref<"day" | "month">("day");
 const dayRecord = ref<DayRecord>(createEmptyDay(selectedDate.value));
 const loading = ref(true);
+const monthLoading = ref(true);
 const savingState = ref<"idle" | "saving" | "saved" | "error">("idle");
 const hydrating = ref(false);
+const monthRecords = ref<Record<string, DayRecord>>({});
 const asignadoOptions = ref<string[]>([]);
 const asignadoEditorOpen = ref(false);
 const newAsignadoOption = ref("");
 const asignadoOptionError = ref("");
 
 let saveTimer: number | undefined;
+let dayLoadRequest = 0;
+let monthLoadRequest = 0;
 
 const formattedTitle = computed(() => formatHeader(selectedDate.value));
+const monthKey = computed(() => selectedDate.value.slice(0, 7));
+const formattedMonthTitle = computed(() =>
+  new Intl.DateTimeFormat("es-ES", {
+    month: "long",
+    year: "numeric",
+  }).format(new Date(`${monthKey.value}-01T12:00:00`)),
+);
+const monthActiveDays = computed(
+  () =>
+    Object.values(monthRecords.value).filter(
+      (record) => record.entries.length > 0,
+    ).length,
+);
+const monthEntryCount = computed(() =>
+  Object.values(monthRecords.value).reduce(
+    (total, record) => total + record.entries.length,
+    0,
+  ),
+);
+const monthDeliveredCount = computed(() =>
+  Object.values(monthRecords.value).reduce(
+    (total, record) =>
+      total + record.entries.filter((entry) => entry.entregado).length,
+    0,
+  ),
+);
+const monthLastSavedLabel = computed(() => {
+  const latest = Object.values(monthRecords.value)
+    .map((record) => record.updatedAt)
+    .sort()
+    .at(-1);
+
+  return latest ? formatTimestamp(latest) : "Sin cambios";
+});
+const isCurrentViewLoading = computed(() =>
+  viewMode.value === "day" ? loading.value : monthLoading.value,
+);
+const monthCalendarCells = computed(() => {
+  const [year, month] = monthKey.value.split("-").map(Number);
+  const firstDay = new Date(year, month - 1, 1, 12, 0, 0);
+  const totalDays = new Date(year, month, 0).getDate();
+  const leadingEmptyCells = (firstDay.getDay() + 6) % 7;
+  const cells: Array<null | {
+    dateKey: string;
+    day: number;
+    isToday: boolean;
+    record: DayRecord | null;
+  }> = [];
+
+  for (let index = 0; index < leadingEmptyCells; index += 1) {
+    cells.push(null);
+  }
+
+  for (let day = 1; day <= totalDays; day += 1) {
+    const dateKey = `${monthKey.value}-${String(day).padStart(2, "0")}`;
+    cells.push({
+      dateKey,
+      day,
+      isToday: dateKey === todayKey(),
+      record: monthRecords.value[dateKey] ?? null,
+    });
+  }
+
+  while (cells.length % 7 !== 0) {
+    cells.push(null);
+  }
+
+  return cells;
+});
 const deliveredCount = computed(
   () => dayRecord.value.entries.filter((entry) => entry.entregado).length,
 );
@@ -119,16 +194,45 @@ function queueSave() {
   }, 350);
 }
 
-async function loadSelectedDay() {
+async function loadSelectedDay(dateKey = selectedDate.value) {
+  const requestId = ++dayLoadRequest;
   loading.value = true;
   hydrating.value = true;
 
   try {
-    dayRecord.value = await loadDay(selectedDate.value);
+    const record = await loadDay(dateKey);
+
+    if (requestId !== dayLoadRequest) {
+      return;
+    }
+
+    dayRecord.value = record;
     savingState.value = "idle";
   } finally {
-    hydrating.value = false;
-    loading.value = false;
+    if (requestId === dayLoadRequest) {
+      hydrating.value = false;
+      loading.value = false;
+    }
+  }
+}
+
+async function loadSelectedMonth(targetMonthKey = monthKey.value) {
+  const requestId = ++monthLoadRequest;
+  monthLoading.value = true;
+
+  try {
+    const records = await loadDaysForMonth(targetMonthKey);
+
+    if (requestId !== monthLoadRequest) {
+      return;
+    }
+
+    monthRecords.value = records;
+    savingState.value = "idle";
+  } finally {
+    if (requestId === monthLoadRequest) {
+      monthLoading.value = false;
+    }
   }
 }
 
@@ -138,13 +242,19 @@ async function loadAsignadoOptions() {
     asignadoOptions.value = settings.asignadoOptions;
   } catch (error) {
     console.error(error);
-    asignadoOptionError.value = "No se pudieron cargar las opciones de asignado.";
+    asignadoOptionError.value =
+      "No se pudieron cargar las opciones de asignado.";
   }
 }
 
 function shiftDay(offset: number) {
   const base = new Date(`${selectedDate.value}T12:00:00`);
-  base.setDate(base.getDate() + offset);
+  if (viewMode.value === "month") {
+    base.setMonth(base.getMonth() + offset);
+    base.setDate(1);
+  } else {
+    base.setDate(base.getDate() + offset);
+  }
   const year = base.getFullYear();
   const month = `${base.getMonth() + 1}`.padStart(2, "0");
   const day = `${base.getDate()}`.padStart(2, "0");
@@ -153,6 +263,46 @@ function shiftDay(offset: number) {
 
 function jumpToToday() {
   selectedDate.value = todayKey();
+}
+
+function openDayFromMonth(dateKey: string) {
+  asignadoEditorOpen.value = false;
+  viewMode.value = "day";
+
+  if (selectedDate.value === dateKey) {
+    void loadSelectedDay(dateKey);
+    return;
+  }
+
+  selectedDate.value = dateKey;
+}
+
+function summarizeDay(record: DayRecord | null) {
+  if (!record || record.entries.length === 0) {
+    return {
+      countLabel: "Sin actividad",
+      preview: [],
+      extraCount: 0,
+    };
+  }
+
+  const preview = record.entries
+    .slice(0, 3)
+    .map(
+      (entry) =>
+        entry.asignado ||
+        entry.referencia ||
+        entry.localidad ||
+        "Entrada sin titulo",
+    );
+
+  return {
+    countLabel: `${record.entries.length} ${
+      record.entries.length === 1 ? "entrada" : "entradas"
+    }`,
+    preview,
+    extraCount: Math.max(0, record.entries.length - preview.length),
+  };
 }
 
 function addRow() {
@@ -209,8 +359,12 @@ async function removeAsignadoOption(optionToRemove: string) {
   await persistAsignadoOptions(nextOptions);
 }
 
-watch(selectedDate, () => {
-  void loadSelectedDay();
+watch(selectedDate, (nextDate, previousDate) => {
+  void loadSelectedDay(nextDate);
+
+  if (nextDate.slice(0, 7) !== previousDate.slice(0, 7)) {
+    void loadSelectedMonth(nextDate.slice(0, 7));
+  }
 });
 
 watch(
@@ -224,45 +378,42 @@ watch(
 onMounted(() => {
   void loadAsignadoOptions();
   void loadSelectedDay();
+  void loadSelectedMonth();
 });
 </script>
 
 <template>
   <main class="planner-app">
-    <aside class="planner-sidebar">
-      <div class="sidebar-card sidebar-card--focus">
-        <div class="focus-list">
-          <div class="focus-item">
-            <span>Total de asignados</span>
-            <strong>{{ occupiedRows }}</strong>
-          </div>
-          <div class="focus-item">
-            <span>Entregados</span>
-            <strong>{{ deliveredCount }}</strong>
-          </div>
-          <div class="focus-item">
-            <span>Sin plano definido</span>
-            <strong>{{ planPendingCount }}</strong>
-          </div>
-          <div class="focus-item">
-            <span>Guardado</span>
-            <strong>{{ lastSavedLabel }}</strong>
-          </div>
-        </div>
-      </div>
-    </aside>
-
     <section class="planner-sheet">
       <section class="sheet-toolbar">
+        <div class="view-switch">
+          <button
+            class="ghost-button"
+            :class="{ 'is-active': viewMode === 'day' }"
+            type="button"
+            @click="viewMode = 'day'"
+          >
+            Vista diaria
+          </button>
+          <button
+            class="ghost-button"
+            :class="{ 'is-active': viewMode === 'month' }"
+            type="button"
+            @click="viewMode = 'month'"
+          >
+            Vista mensual
+          </button>
+        </div>
+
         <div class="toolbar-group toolbar-group--navigation">
           <button class="ghost-button" type="button" @click="shiftDay(-1)">
-            Dia anterior
+            {{ viewMode === "day" ? "Dia anterior" : "Mes anterior" }}
           </button>
           <button class="ghost-button" type="button" @click="jumpToToday">
             Hoy
           </button>
           <button class="ghost-button" type="button" @click="shiftDay(1)">
-            Dia siguiente
+            {{ viewMode === "day" ? "Dia siguiente" : "Mes siguiente" }}
           </button>
         </div>
 
@@ -284,13 +435,24 @@ onMounted(() => {
                     : "Listo"
             }}
           </span>
-          <button class="soft-button" type="button" @click="toggleAsignadoEditor">
+          <button
+            class="soft-button"
+            type="button"
+            @click="toggleAsignadoEditor"
+          >
             {{ asignadoEditorOpen ? "Cerrar asignados" : "Editar asignados" }}
           </button>
           <button class="primary-button" type="button" @click="addRow">
             Anadir fila
           </button>
         </div>
+      </section>
+
+      <section v-if="viewMode === 'month'" class="month-summary">
+        <h3>{{ formattedMonthTitle }}</h3>
+      </section>
+      <section v-else class="month-summary">
+        <h3>{{ formattedTitle }}</h3>
       </section>
 
       <section v-if="asignadoEditorOpen" class="pedido-editor">
@@ -315,7 +477,11 @@ onMounted(() => {
             />
           </label>
 
-          <button class="primary-button" type="button" @click="addAsignadoOption">
+          <button
+            class="primary-button"
+            type="button"
+            @click="addAsignadoOption"
+          >
             Anadir opcion
           </button>
         </div>
@@ -342,9 +508,60 @@ onMounted(() => {
         </div>
       </section>
 
-      <div v-if="loading" class="loading-state">
+      <div v-if="isCurrentViewLoading" class="loading-state">
         Cargando el dia seleccionado...
       </div>
+
+      <section v-else-if="viewMode === 'month'" class="month-calendar">
+        <div class="month-calendar__weekdays">
+          <span>Lun</span>
+          <span>Mar</span>
+          <span>Mie</span>
+          <span>Jue</span>
+          <span>Vie</span>
+          <span>Sab</span>
+          <span>Dom</span>
+        </div>
+
+        <div class="month-calendar__grid">
+          <article
+            v-for="(cell, index) in monthCalendarCells"
+            :key="cell ? cell.dateKey : `empty-${index}`"
+            class="month-card"
+            :class="{ 'is-empty': !cell, 'is-today': cell?.isToday }"
+          >
+            <template v-if="cell">
+              <button
+                class="month-card__button"
+                type="button"
+                @click="openDayFromMonth(cell.dateKey)"
+              >
+                <span class="month-card__day">{{ cell.day }}</span>
+                <span class="month-card__count">{{
+                  summarizeDay(cell.record).countLabel
+                }}</span>
+                <ul
+                  v-if="summarizeDay(cell.record).preview.length > 0"
+                  class="month-card__list"
+                >
+                  <li
+                    v-for="item in summarizeDay(cell.record).preview"
+                    :key="item"
+                  >
+                    {{ item }}
+                  </li>
+                </ul>
+                <span
+                  v-if="summarizeDay(cell.record).extraCount > 0"
+                  class="month-card__more"
+                >
+                  +{{ summarizeDay(cell.record).extraCount }} mas
+                </span>
+              </button>
+            </template>
+          </article>
+        </div>
+      </section>
 
       <div v-else class="sheet-table-wrap">
         <div v-if="dayRecord.entries.length === 0" class="empty-day">
@@ -366,7 +583,7 @@ onMounted(() => {
             <div class="row-topbar">
               <span class="row-marker">{{ index + 1 }}</span>
               <div class="row-status">
-                <strong>{{ entry.asignado || "Sin titulo" }}</strong>
+                <strong>{{ entry.referencia || "Sin referencia" }}</strong>
               </div>
               <button
                 class="inline-remove"
@@ -379,11 +596,13 @@ onMounted(() => {
 
             <div class="sheet-grid sheet-grid--body">
               <label class="field">
-                <span class="field-label">Asignado</span>
+                <span class="field-label">Asignado:</span>
                 <select v-model="entry.asignado">
                   <option value="">Selecciona un asignado</option>
                   <option
-                    v-for="asignadoOption in getAsignadoSelectOptions(entry.asignado)"
+                    v-for="asignadoOption in getAsignadoSelectOptions(
+                      entry.asignado,
+                    )"
                     :key="asignadoOption"
                     :value="asignadoOption"
                   >
@@ -397,30 +616,26 @@ onMounted(() => {
               </label>
 
               <label class="field">
-                <span class="field-label">Plano</span>
+                <span class="field-label">Plano:</span>
                 <select v-model="entry.plano">
-                  <option value="">Pendiente</option>
+                  <option value="">Pendiente:</option>
                   <option value="si">Si</option>
                   <option value="no">No</option>
                 </select>
               </label>
 
               <label class="field">
-                <span class="field-label">Referencia</span>
-                <textarea
-                  v-model="entry.referencia"
-                  rows="3"
-                  placeholder="Descripcion del trabajo o referencia"
-                />
+                <span class="field-label">Referencia:</span>
+                <input v-model="entry.referencia" type="text" />
               </label>
 
               <label class="field">
-                <span class="field-label">Localidad</span>
+                <span class="field-label">Localidad:</span>
                 <LocalityAutocomplete v-model="entry.localidad" />
               </label>
 
               <label class="field">
-                <span class="field-label">Observaciones</span>
+                <span class="field-label">Observaciones:</span>
                 <textarea
                   v-model="entry.observaciones"
                   rows="3"
