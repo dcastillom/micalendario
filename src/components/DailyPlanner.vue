@@ -339,6 +339,11 @@ function jumpToToday() {
   selectedDate.value = todayKey();
 }
 
+function openMonthView() {
+  viewMode.value = "month";
+  referenceFilter.value = "";
+}
+
 function openDayFromMonth(dateKey: string) {
   asignadoEditorOpen.value = false;
   viewMode.value = "day";
@@ -478,7 +483,7 @@ onMounted(() => {
             class="ghost-button"
             :class="{ 'is-active': viewMode === 'month' }"
             type="button"
-            @click="viewMode = 'month'"
+            @click="openMonthView"
           >
             Vista mensual
           </button>
