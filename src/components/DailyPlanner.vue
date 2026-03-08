@@ -532,14 +532,14 @@ onMounted(() => {
             type="button"
             @click="addRow"
           >
-            Anadir fila
+            Anadir informe
           </button>
         </div>
       </section>
 
       <section
         v-if="viewMode === 'month' && normalizedReferenceFilter.length === 0"
-        class="month-summary month-summary--with-search"
+        class="month-summary"
       >
         <div class="month-summary__heading">
           <h3>{{ formattedMonthTitle }}</h3>
@@ -710,7 +710,7 @@ onMounted(() => {
             Puedes dejarlo vacio o crear una nueva fila cuando la necesites.
           </p>
           <button class="primary-button" type="button" @click="addRow">
-            Anadir primera fila
+            Anadir primer informe
           </button>
         </div>
 

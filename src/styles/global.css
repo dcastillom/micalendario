@@ -615,12 +615,6 @@ button {
   text-transform: capitalize;
 }
 
-.month-summary--with-search {
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
-  gap: 16px;
-  align-items: end;
-}
-
 .month-summary__heading {
   min-width: 0;
 }
@@ -936,7 +930,7 @@ button {
 
 @media (max-width: 1320px) {
   .planner-app {
-    grid-template-columns: 260px minmax(0, 1fr);
+    grid-template-columns: 1fr;
   }
 
   .sheet-header h2 {
@@ -951,6 +945,14 @@ button {
   .toolbar-group--navigation,
   .sheet-actions {
     justify-content: flex-start;
+  }
+
+  .view-switch {
+    flex-wrap: wrap;
+  }
+
+  .view-switch .month-summary__search {
+    width: min(100%, 360px);
   }
 }
 
@@ -984,6 +986,11 @@ button {
     overflow-x: auto;
     padding-bottom: 6px;
   }
+
+  .view-switch .month-summary__search {
+    width: 100%;
+    min-width: 0;
+  }
 }
 
 @media (max-width: 820px) {
@@ -1015,10 +1022,6 @@ button {
   }
 
   .filter-result__grid {
-    grid-template-columns: 1fr;
-  }
-
-  .month-summary--with-search {
     grid-template-columns: 1fr;
   }
 
