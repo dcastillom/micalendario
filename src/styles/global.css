@@ -459,6 +459,89 @@ button {
   box-shadow: var(--shadow-soft);
 }
 
+.filter-panel {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 24px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.52),
+    rgba(246, 239, 231, 0.82)
+  );
+  box-shadow: var(--shadow-soft);
+}
+
+.filter-panel__empty {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.filter-results {
+  display: grid;
+  gap: 12px;
+}
+
+.filter-result {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+  padding: 16px;
+  border: 1px solid rgba(53, 74, 64, 0.08);
+  cursor: pointer;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.55);
+  text-align: left;
+}
+
+.filter-result:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-soft);
+}
+
+.filter-result:focus-visible {
+  outline: none;
+  border-color: rgba(31, 107, 90, 0.4);
+  box-shadow: 0 0 0 4px rgba(31, 107, 90, 0.1);
+}
+
+.filter-result__topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: baseline;
+}
+
+.filter-result__topbar strong {
+  font-size: 1rem;
+}
+
+.filter-result__topbar span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+.filter-result__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.filter-result__grid div {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(31, 107, 90, 0.08);
+}
+
+.filter-result__grid strong {
+  font-size: 0.92rem;
+}
+
 .pedido-editor__header {
   display: flex;
   gap: 16px;
@@ -530,6 +613,22 @@ button {
   font-size: clamp(1.45rem, 2vw, 2rem);
   line-height: 1.05;
   text-transform: capitalize;
+}
+
+.month-summary--with-search {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+  gap: 16px;
+  align-items: end;
+}
+
+.month-summary__heading {
+  min-width: 0;
+}
+
+.month-summary__search {
+  justify-self: end;
+  width: 100%;
+  max-width: 360px;
 }
 
 .month-summary__copy {
@@ -913,6 +1012,24 @@ button {
 
   .pedido-editor__form {
     grid-template-columns: 1fr;
+  }
+
+  .filter-result__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .month-summary--with-search {
+    grid-template-columns: 1fr;
+  }
+
+  .month-summary__search {
+    justify-self: stretch;
+    max-width: none;
+  }
+
+  .filter-result__topbar {
+    align-items: start;
+    flex-direction: column;
   }
 }
 

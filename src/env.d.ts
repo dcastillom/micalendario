@@ -6,6 +6,7 @@ declare global {
   interface Window {
     desktopPlanner?: {
       getDay: (dateKey: string) => Promise<DayRecord | null>;
+      getAllDays: () => Promise<Record<string, DayRecord>>;
       getDaysForMonth: (monthKey: string) => Promise<Record<string, DayRecord>>;
       saveDay: (record: DayRecord) => Promise<DayRecord>;
       getSettings: () => Promise<PlannerSettings | null>;

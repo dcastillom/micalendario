@@ -4,6 +4,7 @@ import LocalityAutocomplete from "./LocalityAutocomplete.vue";
 import {
   createEmptyEntry,
   createEmptyDay,
+  loadAllDays,
   loadDay,
   loadDaysForMonth,
   loadSettings,
@@ -49,10 +50,12 @@ const monthLoading = ref(true);
 const savingState = ref<"idle" | "saving" | "saved" | "error">("idle");
 const hydrating = ref(false);
 const monthRecords = ref<Record<string, DayRecord>>({});
+const allRecords = ref<Record<string, DayRecord>>({});
 const asignadoOptions = ref<string[]>([]);
 const asignadoEditorOpen = ref(false);
 const newAsignadoOption = ref("");
 const asignadoOptionError = ref("");
+const referenceFilter = ref("");
 
 let saveTimer: number | undefined;
 let dayLoadRequest = 0;
@@ -142,6 +145,40 @@ const occupiedRows = computed(
 const lastSavedLabel = computed(() =>
   formatTimestamp(dayRecord.value.updatedAt),
 );
+const normalizedReferenceFilter = computed(() =>
+  referenceFilter.value.trim().toLocaleLowerCase("es-ES"),
+);
+const filteredReferenceResults = computed(() => {
+  if (!normalizedReferenceFilter.value) {
+    return [];
+  }
+
+  return Object.values(allRecords.value)
+    .flatMap((record) =>
+      record.entries
+        .filter((entry) =>
+          entry.referencia
+            .trim()
+            .toLocaleLowerCase("es-ES")
+            .includes(normalizedReferenceFilter.value),
+        )
+        .map((entry) => ({
+          id: entry.id,
+          dateKey: record.dateKey,
+          referencia: entry.referencia.trim() || "Sin referencia",
+          asignado: entry.asignado.trim() || "Sin asignar",
+          plano:
+            entry.plano === "si"
+              ? "Si"
+              : entry.plano === "no"
+                ? "No"
+                : "Pendiente",
+          localidad: entry.localidad.trim() || "Sin localidad",
+          entregado: entry.entregado ? "Si" : "No",
+        })),
+    )
+    .sort((left, right) => right.dateKey.localeCompare(left.dateKey));
+});
 
 function normalizeAsignadoOption(value: string) {
   return value.trim().toLocaleLowerCase("es-ES");
@@ -173,12 +210,20 @@ function syncMonthRecord(record: DayRecord) {
   };
 }
 
+function syncAllRecordsRecord(record: DayRecord) {
+  allRecords.value = {
+    ...allRecords.value,
+    [record.dateKey]: cloneRecord(record),
+  };
+}
+
 async function persistDay() {
   savingState.value = "saving";
 
   try {
     dayRecord.value = await saveDay(dayRecord.value);
     syncMonthRecord(dayRecord.value);
+    syncAllRecordsRecord(dayRecord.value);
     savingState.value = "saved";
   } catch (error) {
     console.error(error);
@@ -227,6 +272,7 @@ async function loadSelectedDay(dateKey = selectedDate.value) {
 
     dayRecord.value = record;
     syncMonthRecord(record);
+    syncAllRecordsRecord(record);
     savingState.value = "idle";
   } finally {
     if (requestId === dayLoadRequest) {
@@ -253,6 +299,14 @@ async function loadSelectedMonth(targetMonthKey = monthKey.value) {
     if (requestId === monthLoadRequest) {
       monthLoading.value = false;
     }
+  }
+}
+
+async function loadAllRecords() {
+  try {
+    allRecords.value = await loadAllDays();
+  } catch (error) {
+    console.error(error);
   }
 }
 
@@ -393,12 +447,14 @@ watch(
   dayRecord,
   () => {
     syncMonthRecord(dayRecord.value);
+    syncAllRecordsRecord(dayRecord.value);
     queueSave();
   },
   { deep: true },
 );
 
 onMounted(() => {
+  void loadAllRecords();
   void loadAsignadoOptions();
   void loadSelectedDay();
   void loadSelectedMonth();
@@ -446,42 +502,92 @@ onMounted(() => {
           </label>
         </div>
 
+        <div v-if="viewMode === 'month'">
+          <label class="field month-summary__search">
+            <input
+              v-model="referenceFilter"
+              type="text"
+              placeholder="Busca por referencia"
+            />
+          </label>
+        </div>
+
         <div class="sheet-actions">
-          <span class="save-pill" :data-state="savingState">
-            {{
-              savingState === "saving"
-                ? "Guardando..."
-                : savingState === "saved"
-                  ? "Guardado"
-                  : savingState === "error"
-                    ? "Error al guardar"
-                    : "Listo"
-            }}
-          </span>
           <button
+            v-if="viewMode === 'day'"
             class="soft-button"
             type="button"
             @click="toggleAsignadoEditor"
           >
             {{ asignadoEditorOpen ? "Cerrar asignados" : "Editar asignados" }}
           </button>
-          <button class="primary-button" type="button" @click="addRow">
+          <button
+            v-if="viewMode === 'day'"
+            class="primary-button"
+            type="button"
+            @click="addRow"
+          >
             Anadir fila
           </button>
         </div>
       </section>
 
-      <section v-if="viewMode === 'month'" class="month-summary">
-        <h3>{{ formattedMonthTitle }}</h3>
+      <section
+        v-if="viewMode === 'month' && normalizedReferenceFilter.length === 0"
+        class="month-summary month-summary--with-search"
+      >
+        <div class="month-summary__heading">
+          <h3>{{ formattedMonthTitle }}</h3>
+        </div>
       </section>
-      <section v-else class="month-summary">
+      <section v-else-if="viewMode === 'day'" class="month-summary">
         <h3>{{ formattedTitle }}</h3>
+      </section>
+
+      <section
+        v-if="viewMode === 'month' && normalizedReferenceFilter.length"
+        class="filter-panel"
+      >
+        <div v-if="filteredReferenceResults.length" class="filter-results">
+          <button
+            v-for="result in filteredReferenceResults"
+            :key="`${result.dateKey}-${result.id}`"
+            class="filter-result"
+            type="button"
+            @click="openDayFromMonth(result.dateKey)"
+          >
+            <div class="filter-result__topbar">
+              <strong>{{ formatHeader(result.dateKey) }}</strong>
+            </div>
+
+            <div class="filter-result__grid">
+              <div>
+                <span>Referencia:</span>
+                <span>{{ result.referencia }}</span>
+              </div>
+              <div>
+                <span>Planos:</span>
+                <span>{{ result.plano }}</span>
+              </div>
+              <div>
+                <span>Localidad:</span>
+                <span>{{ result.localidad }}</span>
+              </div>
+              <div>
+                <span>Entregado:</span>
+                <span>{{ result.entregado }}</span>
+              </div>
+            </div>
+          </button>
+        </div>
+        <p v-else class="filter-panel__empty">
+          No hay informes que coincidan con esa referencia.
+        </p>
       </section>
 
       <section v-if="asignadoEditorOpen" class="pedido-editor">
         <div class="pedido-editor__header">
           <div>
-            <p class="eyebrow">Opciones de asignado</p>
             <p class="pedido-editor__copy">
               Anade o elimina las opciones que apareceran en el dropdown de
               asignado.
@@ -491,7 +597,6 @@ onMounted(() => {
 
         <div class="pedido-editor__form">
           <label class="field">
-            <span class="field-label">Nueva opcion</span>
             <input
               v-model="newAsignadoOption"
               type="text"
@@ -535,7 +640,12 @@ onMounted(() => {
         Cargando el dia seleccionado...
       </div>
 
-      <section v-else-if="viewMode === 'month'" class="month-calendar">
+      <section
+        v-else-if="
+          viewMode === 'month' && normalizedReferenceFilter.length === 0
+        "
+        class="month-calendar"
+      >
         <div class="month-calendar__weekdays">
           <span>Lun</span>
           <span>Mar</span>
@@ -588,7 +698,7 @@ onMounted(() => {
         </div>
       </section>
 
-      <div v-else class="sheet-table-wrap">
+      <div v-else-if="viewMode === 'day'" class="sheet-table-wrap">
         <div v-if="dayRecord.entries.length === 0" class="empty-day">
           <p class="empty-day__title">Este día no tiene informes.</p>
           <p class="empty-day__copy">

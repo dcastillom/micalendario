@@ -161,6 +161,20 @@ export async function loadDaysForMonth(monthKey: string): Promise<Record<string,
   );
 }
 
+export async function loadAllDays(): Promise<Record<string, DayRecord>> {
+  if (typeof window !== "undefined" && window.desktopPlanner) {
+    const days = await window.desktopPlanner.getAllDays();
+    return Object.fromEntries(
+      Object.entries(days).map(([dateKey, record]) => [dateKey, normalizeRecord(record)])
+    );
+  }
+
+  const days = readBrowserStore();
+  return Object.fromEntries(
+    Object.entries(days).map(([dateKey, record]) => [dateKey, normalizeRecord(record)])
+  );
+}
+
 export async function saveDay(record: DayRecord): Promise<DayRecord> {
   const normalized = normalizeRecord({
     ...record,

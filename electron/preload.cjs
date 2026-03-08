@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("desktopPlanner", {
   getDay: (dateKey) => ipcRenderer.invoke("planner:get-day", dateKey),
+  getAllDays: () => ipcRenderer.invoke("planner:get-all-days"),
   getDaysForMonth: (monthKey) => ipcRenderer.invoke("planner:get-days-for-month", monthKey),
   saveDay: (record) => ipcRenderer.invoke("planner:save-day", record),
   getSettings: () => ipcRenderer.invoke("planner:get-settings"),

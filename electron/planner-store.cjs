@@ -73,6 +73,10 @@ class PlannerStore {
     return this.data.days[dateKey] ? clone(this.data.days[dateKey]) : null;
   }
 
+  getAllDays() {
+    return clone(this.data.days);
+  }
+
   getDaysForMonth(monthKey) {
     return clone(
       Object.fromEntries(
