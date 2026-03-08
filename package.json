@@ -12,9 +12,9 @@
     "desktop": "electron .",
     "update:municipalities": "node scripts/generate-municipalities.mjs",
     "build:web": "astro build",
-    "build": "pnpm build:web && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
-    "build:mac": "pnpm build:web && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg",
-    "build:win": "pnpm build:web && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis",
+    "build": "pnpm build:web && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --publish never",
+    "build:mac": "pnpm build:web && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --publish never",
+    "build:win": "pnpm build:web && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis --publish never",
     "preview": "astro preview --host 127.0.0.1 --port 4321"
   },
   "dependencies": {
