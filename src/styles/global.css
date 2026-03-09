@@ -843,7 +843,9 @@ button {
 .month-card.is-today .month-card__button {
   box-shadow:
     var(--shadow-soft),
-    inset 0 0 0 2px rgba(31, 107, 90, 0.22);
+    0 0 0 3px rgba(31, 107, 90, 0.2),
+    inset 0 0 0 2px rgba(31, 107, 90, 0.4);
+  border-color: rgba(31, 107, 90, 0.55);
 }
 
 .month-card__day {
@@ -856,6 +858,12 @@ button {
   background: rgba(31, 107, 90, 0.12);
   color: var(--accent-strong);
   font-weight: 800;
+}
+
+.month-card.is-today .month-card__day {
+  background: linear-gradient(180deg, #247962, #1a5f4f);
+  color: #f7f3eb;
+  box-shadow: 0 10px 18px rgba(31, 107, 90, 0.2);
 }
 
 .month-card__count {
