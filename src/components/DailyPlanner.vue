@@ -26,7 +26,7 @@ import {
   saveDay,
   saveSettings,
 } from "../lib/planner-client";
-import type { DayRecord } from "../lib/planner-types";
+import type { DayEntry, DayRecord } from "../lib/planner-types";
 
 const AUTO_BACKUP_INTERVAL_MS = 30 * 60 * 1000;
 const AUTO_BACKUP_DEBOUNCE_MS = 20 * 1000;
@@ -80,6 +80,11 @@ const asignadoOptionError = ref("");
 const referenceFilter = ref("");
 const canOpenBackupFolder = ref(false);
 const canRestoreBackup = ref(false);
+const removeDialog = ref<{
+  id: string;
+  referencia: string;
+  localidad: string;
+} | null>(null);
 
 let saveTimer: number | undefined;
 let backupTimer: number | undefined;
@@ -644,6 +649,18 @@ function scrollToEntry(id: string) {
   });
 }
 
+function openRemoveDialog(entry: DayEntry) {
+  removeDialog.value = {
+    id: entry.id,
+    referencia: entry.referencia.trim() || "Sin referencia",
+    localidad: entry.localidad.trim() || "Sin localidad",
+  };
+}
+
+function closeRemoveDialog() {
+  removeDialog.value = null;
+}
+
 async function addRow() {
   const entry = createEmptyEntry();
   dayRecord.value.entries.push(entry);
@@ -653,10 +670,33 @@ async function addRow() {
 }
 
 function removeRow(id: string) {
+  const entryToRemove = dayRecord.value.entries.find(
+    (entry) => entry.id === id,
+  );
+
+  if (!entryToRemove) {
+    return;
+  }
+
   dayRecord.value.entries = dayRecord.value.entries.filter(
     (entry) => entry.id !== id,
   );
+  closeRemoveDialog();
   queueSave();
+}
+
+function confirmRemoveRow() {
+  if (!removeDialog.value) {
+    return;
+  }
+
+  removeRow(removeDialog.value.id);
+}
+
+function handleWindowKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape" && removeDialog.value) {
+    closeRemoveDialog();
+  }
 }
 
 function toggleAsignadoEditor() {
@@ -724,6 +764,7 @@ watch(
 );
 
 onMounted(() => {
+  window.addEventListener("keydown", handleWindowKeydown);
   canOpenBackupFolder.value = Boolean(
     typeof window !== "undefined" && window.desktopPlanner?.openBackupFolder,
   );
@@ -745,6 +786,8 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener("keydown", handleWindowKeydown);
+
   if (saveTimer) {
     window.clearTimeout(saveTimer);
   }
@@ -937,7 +980,7 @@ onBeforeUnmount(() => {
               type="button"
               @click="removeAsignadoOption(asignadoOption)"
             >
-              Quitar
+              Eliminar
             </button>
           </article>
         </div>
@@ -1067,9 +1110,9 @@ onBeforeUnmount(() => {
               <button
                 class="inline-remove"
                 type="button"
-                @click="removeRow(entry.id)"
+                @click="openRemoveDialog(entry)"
               >
-                Quitar
+                Eliminar
               </button>
             </div>
 
@@ -1152,5 +1195,38 @@ onBeforeUnmount(() => {
         </button>
       </footer>
     </section>
+
+    <div
+      v-if="removeDialog"
+      class="confirm-overlay"
+      @click.self="closeRemoveDialog"
+    >
+      <section
+        class="confirm-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="remove-dialog-title"
+      >
+        <h2 id="remove-dialog-title">¿Quieres eliminar este informe?</h2>
+        <dl class="confirm-dialog__details">
+          <div>
+            <dt>Referencia:</dt>
+            <dd>{{ removeDialog.referencia }}</dd>
+          </div>
+          <div>
+            <dt>Localidad:</dt>
+            <dd>{{ removeDialog.localidad }}</dd>
+          </div>
+        </dl>
+        <div class="confirm-dialog__actions">
+          <button class="ghost-button" type="button" @click="closeRemoveDialog">
+            Cancelar
+          </button>
+          <button class="inline-remove" type="button" @click="confirmRemoveRow">
+            Eliminar
+          </button>
+        </div>
+      </section>
+    </div>
   </main>
 </template>
