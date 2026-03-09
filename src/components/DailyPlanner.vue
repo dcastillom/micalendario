@@ -31,6 +31,7 @@ import type { DayRecord } from "../lib/planner-types";
 const AUTO_BACKUP_INTERVAL_MS = 30 * 60 * 1000;
 const AUTO_BACKUP_DEBOUNCE_MS = 20 * 1000;
 const NEW_ENTRY_SCROLL_TOP_OFFSET = 140;
+const MONTH_CARD_PREVIEW_LIMIT = 6;
 
 function todayKey() {
   const now = new Date();
@@ -588,7 +589,7 @@ function summarizeDay(record: DayRecord | null) {
     };
   }
 
-  const preview = record.entries.slice(0, 3).map((entry) => ({
+  const preview = record.entries.slice(0, MONTH_CARD_PREVIEW_LIMIT).map((entry) => ({
     id: entry.id,
     referencia: entry.referencia.trim() || "Sin referencia",
     localidad: entry.localidad.trim() || "Sin localidad",
@@ -960,7 +961,11 @@ onBeforeUnmount(() => {
             v-for="(cell, index) in monthCalendarCells"
             :key="cell ? cell.dateKey : `empty-${index}`"
             class="month-card"
-            :class="{ 'is-empty': !cell, 'is-today': cell?.isToday }"
+            :class="{
+              'is-empty': !cell,
+              'is-selected': cell?.dateKey === selectedDate,
+              'is-today': cell?.isToday,
+            }"
           >
             <template v-if="cell">
               <button

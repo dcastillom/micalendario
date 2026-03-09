@@ -840,7 +840,7 @@ button {
   box-shadow: var(--shadow-soft);
 }
 
-.month-card.is-today .month-card__button {
+.month-card.is-selected .month-card__button {
   box-shadow:
     var(--shadow-soft),
     0 0 0 3px rgba(31, 107, 90, 0.2),
@@ -861,6 +861,10 @@ button {
 }
 
 .month-card.is-today .month-card__day {
+  box-shadow: inset 0 0 0 2px rgba(31, 107, 90, 0.35);
+}
+
+.month-card.is-selected.is-today .month-card__day {
   background: linear-gradient(180deg, #247962, #1a5f4f);
   color: #f7f3eb;
   box-shadow: 0 10px 18px rgba(31, 107, 90, 0.2);
