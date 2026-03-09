@@ -593,6 +593,7 @@ function summarizeDay(record: DayRecord | null) {
     .slice(0, MONTH_CARD_PREVIEW_LIMIT)
     .map((entry) => ({
       id: entry.id,
+      isOk: entry.plano === "si" && entry.entregado,
       referencia: entry.referencia.trim() || "Sin referencia",
       asignado: entry.asignado.trim() || "Sin asignar",
       hasPlanos: entry.plano === "si",
@@ -991,7 +992,18 @@ onBeforeUnmount(() => {
                     v-for="item in summarizeDay(cell.record).preview"
                     :key="item.id"
                   >
-                    <em>{{ item.referencia }}</em>
+                    <div class="month-card__entry-top">
+                      <em>{{ item.referencia }}</em>
+                      <span
+                        class="month-card__status"
+                        :class="
+                          item.isOk
+                            ? 'month-card__status--ok'
+                            : 'month-card__status--issue'
+                        "
+                      >
+                      </span>
+                    </div>
                     <span v-if="item.localidad" class="month-card__meta">{{
                       item.localidad
                     }}</span>

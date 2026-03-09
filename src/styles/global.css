@@ -915,11 +915,41 @@ button {
   font-size: 0.74rem;
 }
 
+.month-card__entry-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.month-card__entry-top em {
+  min-width: 0;
+  flex: 1;
+}
+
 .month-card__list em {
   color: var(--accent-strong);
   font-size: 0.82rem;
   font-style: normal;
   font-weight: 700;
+}
+
+.month-card__status {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.month-card__status--ok {
+  background: #659e76;
+  box-shadow: 0 0 0 3px rgba(30, 164, 70, 0.14);
+}
+
+.month-card__status--issue {
+  background: #dd6565;
+  box-shadow: 0 0 0 3px rgba(215, 60, 60, 0.14);
 }
 
 .month-card__tags {
