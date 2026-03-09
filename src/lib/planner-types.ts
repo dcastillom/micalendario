@@ -15,6 +15,7 @@ export interface DayRecord {
   notes: string;
   entries: DayEntry[];
   updatedAt: string;
+  localidad: string;
 }
 
 export interface PlannerSettings {

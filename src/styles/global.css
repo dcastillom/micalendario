@@ -886,7 +886,7 @@ button {
 
 .month-card__list li {
   display: grid;
-  gap: 2px;
+  gap: 6px;
   padding: 8px 9px;
   border-radius: 12px;
   background: rgba(31, 107, 90, 0.08);
@@ -907,14 +907,70 @@ button {
 
 .month-card__list span {
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: 0.82rem;
+}
+
+.month-card__meta {
+  color: var(--muted);
+  font-size: 0.74rem;
 }
 
 .month-card__list em {
   color: var(--accent-strong);
-  font-size: 0.74rem;
+  font-size: 0.82rem;
   font-style: normal;
   font-weight: 700;
+}
+
+.month-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.month-card__tag {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 0.82rem !important;
+  font-weight: 400;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+  border: 1px solid transparent;
+}
+
+.month-card__tag--asignado {
+  border-color: rgba(10, 132, 136, 0.42);
+  background: rgba(31, 107, 90, 0.2);
+  color: #165546;
+}
+
+.month-card__tag--planos-ok {
+  background: rgba(31, 107, 90, 0.18);
+  color: #165546;
+}
+
+.month-card__tag--planos-missing {
+  background: linear-gradient(180deg, #ffd9d9, #ffbcbc);
+  border-color: rgba(188, 45, 45, 0.42);
+  color: #861212;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+}
+
+.month-card__tag--delivered {
+  background: rgba(62, 140, 74, 0.2);
+  color: #245b31;
+}
+
+.month-card__tag--pending {
+  background: linear-gradient(180deg, #ffe6bf, #ffc978);
+  border-color: rgba(204, 120, 40, 0.42);
+  color: #8b4300;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.48);
 }
 
 .month-card__more {

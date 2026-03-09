@@ -1,13 +1,13 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const DEFAULT_ASIGNADO_OPTIONS = ["Bea", "Cris", "Gloria", "Alfredo", "Yo"];
+const DEFAULT_ASIGNADO_OPTIONS = ["Bea", "Cris", "Gloria", "Alfredo", "Aída"];
 const BACKUP_FILE_PREFIX = "planner-backup-";
 const MAX_BACKUP_FILES = 30;
 
 function sortAsignadoOptions(options) {
   return [...options].sort((left, right) =>
-    left.localeCompare(right, "es", { sensitivity: "base" })
+    left.localeCompare(right, "es", { sensitivity: "base" }),
   );
 }
 
@@ -29,7 +29,7 @@ class PlannerStore {
     } catch {
       return this.normalize({
         version: 1,
-        days: {}
+        days: {},
       });
     }
   }
@@ -51,19 +51,31 @@ class PlannerStore {
             entries: Array.isArray(day?.entries)
               ? day.entries.map((entry) => ({
                   ...entry,
-                  asignado: entry.asignado ?? entry.pedido ?? ""
+                  asignado: entry.asignado ?? entry.pedido ?? "",
                 }))
-              : []
-          }
-        ])
+              : [],
+          },
+        ]),
       ),
       settings: {
         asignadoOptions: sortAsignadoOptions(
-          [...new Set(asignadoOptions.map((option) => String(option).trim()).filter(Boolean))].length > 0
-            ? [...new Set(asignadoOptions.map((option) => String(option).trim()).filter(Boolean))]
-            : [...DEFAULT_ASIGNADO_OPTIONS]
-        )
-      }
+          [
+            ...new Set(
+              asignadoOptions
+                .map((option) => String(option).trim())
+                .filter(Boolean),
+            ),
+          ].length > 0
+            ? [
+                ...new Set(
+                  asignadoOptions
+                    .map((option) => String(option).trim())
+                    .filter(Boolean),
+                ),
+              ]
+            : [...DEFAULT_ASIGNADO_OPTIONS],
+        ),
+      },
     };
   }
 
@@ -75,14 +87,19 @@ class PlannerStore {
   saveBackup(snapshot) {
     fs.mkdirSync(this.backupDir, { recursive: true });
 
-    const safeTimestamp = new Date(snapshot.createdAt ?? Date.now()).toISOString().replace(/[:.]/g, "-");
-    const filePath = path.join(this.backupDir, `${BACKUP_FILE_PREFIX}${safeTimestamp}.json`);
+    const safeTimestamp = new Date(snapshot.createdAt ?? Date.now())
+      .toISOString()
+      .replace(/[:.]/g, "-");
+    const filePath = path.join(
+      this.backupDir,
+      `${BACKUP_FILE_PREFIX}${safeTimestamp}.json`,
+    );
     const payload = {
       version: 1,
       createdAt: snapshot.createdAt ?? new Date().toISOString(),
       storageMode: snapshot.storageMode ?? "unknown",
       days: clone(snapshot.days ?? {}),
-      settings: clone(snapshot.settings ?? {})
+      settings: clone(snapshot.settings ?? {}),
     };
 
     fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
@@ -90,14 +107,19 @@ class PlannerStore {
 
     return {
       filePath,
-      createdAt: payload.createdAt
+      createdAt: payload.createdAt,
     };
   }
 
   pruneBackups() {
     const backupFiles = fs
       .readdirSync(this.backupDir, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && entry.name.startsWith(BACKUP_FILE_PREFIX) && entry.name.endsWith(".json"))
+      .filter(
+        (entry) =>
+          entry.isFile() &&
+          entry.name.startsWith(BACKUP_FILE_PREFIX) &&
+          entry.name.endsWith(".json"),
+      )
       .map((entry) => entry.name)
       .sort()
       .reverse();
@@ -117,10 +139,14 @@ class PlannerStore {
     const parsed = JSON.parse(raw);
 
     return {
-      createdAt: typeof parsed?.createdAt === "string" ? parsed.createdAt : new Date().toISOString(),
-      storageMode: typeof parsed?.storageMode === "string" ? parsed.storageMode : "local",
+      createdAt:
+        typeof parsed?.createdAt === "string"
+          ? parsed.createdAt
+          : new Date().toISOString(),
+      storageMode:
+        typeof parsed?.storageMode === "string" ? parsed.storageMode : "local",
       days: clone(parsed?.days ?? {}),
-      settings: clone(parsed?.settings ?? {})
+      settings: clone(parsed?.settings ?? {}),
     };
   }
 
@@ -128,12 +154,12 @@ class PlannerStore {
     this.data = this.normalize({
       version: 2,
       days: snapshot?.days ?? {},
-      settings: snapshot?.settings ?? {}
+      settings: snapshot?.settings ?? {},
     });
     this.persist();
 
     return {
-      dayCount: Object.keys(this.data.days).length
+      dayCount: Object.keys(this.data.days).length,
     };
   }
 
@@ -148,8 +174,10 @@ class PlannerStore {
   getDaysForMonth(monthKey) {
     return clone(
       Object.fromEntries(
-        Object.entries(this.data.days).filter(([dateKey]) => dateKey.startsWith(`${monthKey}-`))
-      )
+        Object.entries(this.data.days).filter(([dateKey]) =>
+          dateKey.startsWith(`${monthKey}-`),
+        ),
+      ),
     );
   }
 
@@ -171,5 +199,5 @@ class PlannerStore {
 }
 
 module.exports = {
-  PlannerStore
+  PlannerStore,
 };

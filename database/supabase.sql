@@ -12,7 +12,7 @@ create table if not exists public.planner_settings (
 );
 
 insert into public.planner_settings (id, asignado_options)
-values ('shared', '["Bea","Cris","Gloria","Alfredo","Yo"]'::jsonb)
+values ('shared', '["Bea","Cris","Gloria","Alfredo","Aída"]'::jsonb)
 on conflict (id) do nothing;
 
 alter table public.planner_days disable row level security;

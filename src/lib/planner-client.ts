@@ -1,9 +1,13 @@
 import type { DayEntry, DayRecord, PlannerSettings } from "./planner-types";
-import { getSupabaseClient, hasSupabaseConfig, type StorageModeStatus } from "./supabase-client";
+import {
+  getSupabaseClient,
+  hasSupabaseConfig,
+  type StorageModeStatus,
+} from "./supabase-client";
 
 const STORAGE_KEY = "mi-calendario-days";
 const SETTINGS_KEY = "mi-calendario-settings";
-const DEFAULT_ASIGNADO_OPTIONS = ["Bea", "Cris", "Gloria", "Alfredo", "Yo"];
+const DEFAULT_ASIGNADO_OPTIONS = ["Bea", "Cris", "Gloria", "Alfredo", "Aída"];
 const REMOTE_DAYS_TABLE = "planner_days";
 const REMOTE_SETTINGS_TABLE = "planner_settings";
 const REMOTE_SHARED_SETTINGS_ID = "shared";
@@ -15,12 +19,14 @@ export interface PlannerBackupSnapshot {
   settings: PlannerSettings;
 }
 
-function normalizeBackupSnapshot(snapshot: PlannerBackupSnapshot): PlannerBackupSnapshot {
+function normalizeBackupSnapshot(
+  snapshot: PlannerBackupSnapshot,
+): PlannerBackupSnapshot {
   return {
     createdAt: snapshot.createdAt || new Date().toISOString(),
     storageMode: snapshot.storageMode,
     days: normalizeRecordMap(snapshot.days ?? {}),
-    settings: normalizeSettings(snapshot.settings)
+    settings: normalizeSettings(snapshot.settings),
   };
 }
 
@@ -40,28 +46,33 @@ export function createEmptyEntry(): DayEntry {
     referencia: "",
     localidad: "",
     observaciones: "",
-    entregado: false
+    entregado: false,
   };
 }
 
 function normalizeEntry(entry: DayEntry & { pedido?: string }) {
   return {
     ...entry,
-    asignado: entry.asignado ?? entry.pedido ?? ""
+    asignado: entry.asignado ?? entry.pedido ?? "",
   };
 }
 
 function normalizeRecord(record: DayRecord): DayRecord {
   return {
     ...record,
-    entries: record.entries.map((entry) => normalizeEntry(entry as DayEntry & { pedido?: string })),
-    updatedAt: record.updatedAt || new Date().toISOString()
+    entries: record.entries.map((entry) =>
+      normalizeEntry(entry as DayEntry & { pedido?: string }),
+    ),
+    updatedAt: record.updatedAt || new Date().toISOString(),
   };
 }
 
 function normalizeRecordMap(days: Record<string, DayRecord>) {
   return Object.fromEntries(
-    Object.entries(days).map(([dateKey, record]) => [dateKey, normalizeRecord(record)])
+    Object.entries(days).map(([dateKey, record]) => [
+      dateKey,
+      normalizeRecord(record),
+    ]),
   );
 }
 
@@ -82,21 +93,25 @@ function normalizeAsignadoOptions(options: string[]) {
   }
 
   const sortedOptions = uniqueOptions.sort((left, right) =>
-    left.localeCompare(right, "es", { sensitivity: "base" })
+    left.localeCompare(right, "es", { sensitivity: "base" }),
   );
 
-  return sortedOptions.length > 0 ? sortedOptions : [...DEFAULT_ASIGNADO_OPTIONS].sort((left, right) =>
-    left.localeCompare(right, "es", { sensitivity: "base" })
-  );
+  return sortedOptions.length > 0
+    ? sortedOptions
+    : [...DEFAULT_ASIGNADO_OPTIONS].sort((left, right) =>
+        left.localeCompare(right, "es", { sensitivity: "base" }),
+      );
 }
 
 function normalizeSettings(
-  settings?: (PlannerSettings & { pedidoOptions?: string[] }) | null
+  settings?: (PlannerSettings & { pedidoOptions?: string[] }) | null,
 ): PlannerSettings {
   return {
     asignadoOptions: normalizeAsignadoOptions(
-      settings?.asignadoOptions ?? settings?.pedidoOptions ?? DEFAULT_ASIGNADO_OPTIONS
-    )
+      settings?.asignadoOptions ??
+        settings?.pedidoOptions ??
+        DEFAULT_ASIGNADO_OPTIONS,
+    ),
   };
 }
 
@@ -105,7 +120,7 @@ export function createEmptyDay(dateKey: string): DayRecord {
     dateKey,
     notes: "",
     entries: [],
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
   });
 }
 
@@ -123,7 +138,7 @@ function serializeRemoteRecord(record: DayRecord) {
     date_key: record.dateKey,
     notes: record.notes,
     entries: record.entries,
-    updated_at: record.updatedAt
+    updated_at: record.updatedAt,
   };
 }
 
@@ -137,7 +152,7 @@ function normalizeRemoteRecord(row: {
     dateKey: row.date_key,
     notes: row.notes ?? "",
     entries: Array.isArray(row.entries) ? row.entries : [],
-    updatedAt: row.updated_at ?? new Date().toISOString()
+    updatedAt: row.updated_at ?? new Date().toISOString(),
   });
 }
 
@@ -180,7 +195,9 @@ async function loadRemoteDaysForMonth(monthKey: string) {
     throw error;
   }
 
-  return Object.fromEntries((data ?? []).map((row) => [row.date_key, normalizeRemoteRecord(row)]));
+  return Object.fromEntries(
+    (data ?? []).map((row) => [row.date_key, normalizeRemoteRecord(row)]),
+  );
 }
 
 async function loadRemoteAllDays() {
@@ -199,7 +216,9 @@ async function loadRemoteAllDays() {
     throw error;
   }
 
-  return Object.fromEntries((data ?? []).map((row) => [row.date_key, normalizeRemoteRecord(row)]));
+  return Object.fromEntries(
+    (data ?? []).map((row) => [row.date_key, normalizeRemoteRecord(row)]),
+  );
 }
 
 async function saveRemoteDay(record: DayRecord) {
@@ -244,9 +263,9 @@ async function loadRemoteSettings() {
       ? {
           asignadoOptions: Array.isArray(data.asignado_options)
             ? data.asignado_options.map((value) => String(value))
-            : []
+            : [],
         }
-      : undefined
+      : undefined,
   );
 }
 
@@ -264,9 +283,9 @@ async function saveRemoteSettings(settings: PlannerSettings) {
       {
         id: REMOTE_SHARED_SETTINGS_ID,
         asignado_options: normalized.asignadoOptions,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
       },
-      { onConflict: "id" }
+      { onConflict: "id" },
     )
     .select("asignado_options")
     .single();
@@ -278,7 +297,7 @@ async function saveRemoteSettings(settings: PlannerSettings) {
   return normalizeSettings({
     asignadoOptions: Array.isArray(data.asignado_options)
       ? data.asignado_options.map((value) => String(value))
-      : []
+      : [],
   });
 }
 
@@ -290,7 +309,9 @@ async function replaceRemoteAllData(snapshot: PlannerBackupSnapshot) {
   }
 
   const normalized = normalizeBackupSnapshot(snapshot);
-  const records = Object.values(normalized.days).map((record) => serializeRemoteRecord(record));
+  const records = Object.values(normalized.days).map((record) =>
+    serializeRemoteRecord(record),
+  );
 
   const { error: deleteDaysError } = await supabase
     .from(REMOTE_DAYS_TABLE)
@@ -317,9 +338,9 @@ async function replaceRemoteAllData(snapshot: PlannerBackupSnapshot) {
       {
         id: REMOTE_SHARED_SETTINGS_ID,
         asignado_options: normalized.settings.asignadoOptions,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
       },
-      { onConflict: "id" }
+      { onConflict: "id" },
     );
 
   if (settingsError) {
@@ -365,7 +386,9 @@ function readBrowserSettings(): PlannerSettings {
   }
 
   try {
-    return normalizeSettings(JSON.parse(raw) as PlannerSettings & { pedidoOptions?: string[] });
+    return normalizeSettings(
+      JSON.parse(raw) as PlannerSettings & { pedidoOptions?: string[] },
+    );
   } catch {
     return normalizeSettings();
   }
@@ -376,7 +399,10 @@ function writeBrowserSettings(settings: PlannerSettings) {
     return;
   }
 
-  window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(normalizeSettings(settings)));
+  window.localStorage.setItem(
+    SETTINGS_KEY,
+    JSON.stringify(normalizeSettings(settings)),
+  );
 }
 
 export async function loadDay(dateKey: string): Promise<DayRecord> {
@@ -398,13 +424,18 @@ export async function loadDay(dateKey: string): Promise<DayRecord> {
   return normalizeRecord(days[dateKey] ?? createEmptyDay(dateKey));
 }
 
-export async function loadDaysForMonth(monthKey: string): Promise<Record<string, DayRecord>> {
+export async function loadDaysForMonth(
+  monthKey: string,
+): Promise<Record<string, DayRecord>> {
   if (hasSupabaseConfig()) {
     try {
       const days = await loadRemoteDaysForMonth(monthKey);
       return normalizeRecordMap(days ?? {});
     } catch (error) {
-      console.error("No se pudieron cargar los dias del mes desde Supabase.", error);
+      console.error(
+        "No se pudieron cargar los dias del mes desde Supabase.",
+        error,
+      );
     }
   }
 
@@ -415,7 +446,11 @@ export async function loadDaysForMonth(monthKey: string): Promise<Record<string,
 
   const days = readBrowserStore();
   return normalizeRecordMap(
-    Object.fromEntries(Object.entries(days).filter(([dateKey]) => dateKey.startsWith(`${monthKey}-`)))
+    Object.fromEntries(
+      Object.entries(days).filter(([dateKey]) =>
+        dateKey.startsWith(`${monthKey}-`),
+      ),
+    ),
   );
 }
 
@@ -425,7 +460,10 @@ export async function loadAllDays(): Promise<Record<string, DayRecord>> {
       const days = await loadRemoteAllDays();
       return normalizeRecordMap(days ?? {});
     } catch (error) {
-      console.error("No se pudieron cargar todos los dias desde Supabase.", error);
+      console.error(
+        "No se pudieron cargar todos los dias desde Supabase.",
+        error,
+      );
     }
   }
 
@@ -441,7 +479,7 @@ export async function loadAllDays(): Promise<Record<string, DayRecord>> {
 export async function saveDay(record: DayRecord): Promise<DayRecord> {
   const normalized = normalizeRecord({
     ...record,
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
   });
 
   if (hasSupabaseConfig()) {
@@ -472,7 +510,10 @@ export async function loadSettings(): Promise<PlannerSettings> {
     try {
       return normalizeSettings(await loadRemoteSettings());
     } catch (error) {
-      console.error("No se pudo cargar la configuracion desde Supabase.", error);
+      console.error(
+        "No se pudo cargar la configuracion desde Supabase.",
+        error,
+      );
     }
   }
 
@@ -483,7 +524,9 @@ export async function loadSettings(): Promise<PlannerSettings> {
   return readBrowserSettings();
 }
 
-export async function saveSettings(settings: PlannerSettings): Promise<PlannerSettings> {
+export async function saveSettings(
+  settings: PlannerSettings,
+): Promise<PlannerSettings> {
   const normalized = normalizeSettings(settings);
 
   if (hasSupabaseConfig()) {
@@ -497,14 +540,18 @@ export async function saveSettings(settings: PlannerSettings): Promise<PlannerSe
   }
 
   if (typeof window !== "undefined" && window.desktopPlanner) {
-    return normalizeSettings(await window.desktopPlanner.saveSettings(normalized));
+    return normalizeSettings(
+      await window.desktopPlanner.saveSettings(normalized),
+    );
   }
 
   writeBrowserSettings(normalized);
   return normalized;
 }
 
-export async function saveDesktopBackup(snapshot: PlannerBackupSnapshot): Promise<boolean> {
+export async function saveDesktopBackup(
+  snapshot: PlannerBackupSnapshot,
+): Promise<boolean> {
   if (typeof window === "undefined" || !window.desktopPlanner?.saveBackup) {
     return false;
   }
@@ -514,7 +561,10 @@ export async function saveDesktopBackup(snapshot: PlannerBackupSnapshot): Promis
 }
 
 export async function openDesktopBackupFolder(): Promise<boolean> {
-  if (typeof window === "undefined" || !window.desktopPlanner?.openBackupFolder) {
+  if (
+    typeof window === "undefined" ||
+    !window.desktopPlanner?.openBackupFolder
+  ) {
     return false;
   }
 
@@ -531,7 +581,9 @@ export async function selectDesktopBackup(): Promise<PlannerBackupSnapshot | nul
   return snapshot ? normalizeBackupSnapshot(snapshot) : null;
 }
 
-export async function restoreBackupSnapshot(snapshot: PlannerBackupSnapshot): Promise<void> {
+export async function restoreBackupSnapshot(
+  snapshot: PlannerBackupSnapshot,
+): Promise<void> {
   const normalized = normalizeBackupSnapshot(snapshot);
 
   if (hasSupabaseConfig()) {

@@ -589,17 +589,23 @@ function summarizeDay(record: DayRecord | null) {
     };
   }
 
-  const preview = record.entries.slice(0, MONTH_CARD_PREVIEW_LIMIT).map((entry) => ({
-    id: entry.id,
-    referencia: entry.referencia.trim() || "Sin referencia",
-    localidad: entry.localidad.trim() || "Sin localidad",
-    plano:
-      entry.plano === "si"
-        ? "Con planos"
-        : entry.plano === "no"
-          ? "Sin planos"
-          : "Sin planos",
-  }));
+  const preview = record.entries
+    .slice(0, MONTH_CARD_PREVIEW_LIMIT)
+    .map((entry) => ({
+      id: entry.id,
+      referencia: entry.referencia.trim() || "Sin referencia",
+      asignado: entry.asignado.trim() || "Sin asignar",
+      hasPlanos: entry.plano === "si",
+      plano:
+        entry.plano === "si"
+          ? "Con planos"
+          : entry.plano === "no"
+            ? "Sin planos"
+            : "Sin planos",
+      localidad: entry.localidad.trim(),
+      isEntregado: entry.entregado,
+      entregado: entry.entregado ? "Entregado" : "No entregado",
+    }));
 
   return {
     countLabel: `${record.entries.length} ${
@@ -986,8 +992,29 @@ onBeforeUnmount(() => {
                     :key="item.id"
                   >
                     <em>{{ item.referencia }}</em>
-                    <span>{{ item.localidad }}</span>
-                    <em>{{ item.plano }}</em>
+                    <span v-if="item.localidad" class="month-card__meta">{{
+                      item.localidad
+                    }}</span>
+                    <div class="month-card__tags">
+                      <span
+                        v-if="item.asignado !== 'Sin asignar'"
+                        class="month-card__tag month-card__tag--asignado"
+                      >
+                        {{ item.asignado }}
+                      </span>
+                      <span
+                        v-if="!item.hasPlanos"
+                        class="month-card__tag month-card__tag--planos-missing"
+                      >
+                        {{ item.plano }}
+                      </span>
+                      <span
+                        v-if="!item.isEntregado"
+                        class="month-card__tag month-card__tag--pending"
+                      >
+                        {{ item.entregado }}
+                      </span>
+                    </div>
                   </li>
                 </ul>
                 <span
