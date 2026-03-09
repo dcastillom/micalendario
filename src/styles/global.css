@@ -119,7 +119,6 @@ button {
 .sidebar-card h1,
 .sheet-header h2 {
   margin: 0;
-  font-family: "Iowan Old Style", "Palatino Linotype", serif;
   font-weight: 700;
   letter-spacing: -0.04em;
 }
@@ -158,7 +157,6 @@ button {
 
 .brand-date strong {
   max-width: 190px;
-  font-family: "Iowan Old Style", "Palatino Linotype", serif;
   font-size: 1.4rem;
   line-height: 1.08;
 }
@@ -231,7 +229,6 @@ button {
 .sheet-header h2 {
   font-size: clamp(2.35rem, 4vw, 4.5rem);
   line-height: 0.95;
-  text-transform: capitalize;
 }
 
 .sheet-toolbar {
@@ -664,10 +661,8 @@ button {
 .month-summary h2,
 .month-summary h3 {
   margin: 0;
-  font-family: "Iowan Old Style", "Palatino Linotype", serif;
   font-size: clamp(1.45rem, 2vw, 2rem);
   line-height: 1.05;
-  text-transform: capitalize;
 }
 
 .month-summary__heading {
@@ -726,7 +721,6 @@ button {
 }
 
 .overview-card strong {
-  font-family: "Iowan Old Style", "Palatino Linotype", serif;
   font-size: 1.75rem;
   line-height: 1;
 }
@@ -751,7 +745,6 @@ button {
 
 .empty-day__title {
   margin: 0;
-  font-family: "Iowan Old Style", "Palatino Linotype", serif;
   font-size: 1.7rem;
   line-height: 1;
 }
