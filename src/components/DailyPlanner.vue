@@ -456,13 +456,13 @@ function queueDesktopBackup(reason: string) {
 const backupLinkLabel = computed(() =>
   canOpenBackupFolder.value
     ? "Abrir carpeta de backups"
-    : "Backups: solo en la app de escritorio",
+    : "Backups: sólo en la app de escritorio",
 );
 
 const restoreLinkLabel = computed(() =>
   canRestoreBackup.value
     ? "Restaurar copia de seguridad"
-    : "Restaurar: solo en la app de escritorio",
+    : "Restaurar: sólo en la app de escritorio",
 );
 
 async function openBackupFolder() {
@@ -833,13 +833,13 @@ onBeforeUnmount(() => {
 
         <div class="toolbar-group toolbar-group--navigation">
           <button class="ghost-button" type="button" @click="shiftDay(-1)">
-            {{ viewMode === "day" ? "Dia anterior" : "Mes anterior" }}
+            {{ viewMode === "day" ? "Día anterior" : "Mes anterior" }}
           </button>
           <button class="ghost-button" type="button" @click="jumpToToday">
             Hoy
           </button>
           <button class="ghost-button" type="button" @click="shiftDay(1)">
-            {{ viewMode === "day" ? "Dia siguiente" : "Mes siguiente" }}
+            {{ viewMode === "day" ? "Día siguiente" : "Mes siguiente" }}
           </button>
         </div>
 
@@ -877,7 +877,7 @@ onBeforeUnmount(() => {
             type="button"
             @click="addRow"
           >
-            Anadir informe
+            Añadir informe
           </button>
         </div>
       </section>
@@ -939,7 +939,7 @@ onBeforeUnmount(() => {
         <div class="pedido-editor__header">
           <div>
             <p class="pedido-editor__copy">
-              Anade o elimina las opciones que apareceran en el dropdown de
+              Añade o elimina las opciones que aparecerán en el dropdown de
               asignado.
             </p>
           </div>
@@ -960,7 +960,7 @@ onBeforeUnmount(() => {
             type="button"
             @click="addAsignadoOption"
           >
-            Anadir opcion
+            Añadir opción
           </button>
         </div>
 
@@ -1088,10 +1088,10 @@ onBeforeUnmount(() => {
         <div v-if="dayRecord.entries.length === 0" class="empty-day">
           <p class="empty-day__title">Este día no tiene informes.</p>
           <p class="empty-day__copy">
-            Puedes dejarlo vacio o crear una nueva fila cuando la necesites.
+            Puedes dejarlo vacío o crear una nueva fila cuando la necesites.
           </p>
           <button class="primary-button" type="button" @click="addRow">
-            Anadir primer informe
+            Añadir primer informe
           </button>
         </div>
 
