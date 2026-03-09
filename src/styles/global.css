@@ -70,13 +70,11 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   min-height: 100vh;
-  padding: 20px;
 }
 
 .sidebar-card,
 .planner-sheet {
   border: 1px solid rgba(255, 255, 255, 0.42);
-  border-radius: var(--radius-xl);
   background: linear-gradient(
     180deg,
     rgba(255, 252, 246, 0.95),
@@ -1208,10 +1206,6 @@ button {
 }
 
 @media (max-width: 820px) {
-  .planner-app {
-    padding: 14px;
-  }
-
   .planner-sheet,
   .sidebar-card {
     padding: 18px;
@@ -1316,10 +1310,6 @@ button {
 }
 
 @media (max-width: 640px) {
-  .planner-app {
-    padding: 10px;
-  }
-
   .planner-sheet {
     gap: 14px;
     padding: 14px;
