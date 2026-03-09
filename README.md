@@ -20,6 +20,29 @@ La mejor opcion para este caso es `SQLite`:
 
 He dejado un esquema inicial en [database/schema.sql](/Users/d.castillo.marfull/Projects/micalendario/database/schema.sql). Para acelerar la primera version, la persistencia actual usa un archivo JSON local; asi podemos validar la UX antes de fijar la capa SQLite.
 
+## Supabase
+
+La app ya puede trabajar contra Supabase como agenda compartida sin login.
+
+Configuracion:
+
+1. En Supabase, abre el editor SQL y ejecuta [database/supabase.sql](/Users/d.castillo.marfull/Projects/micalendario/database/supabase.sql).
+2. Crea un archivo `.env` en la raiz del proyecto a partir de [.env.example](/Users/d.castillo.marfull/Projects/micalendario/.env.example).
+3. Rellena:
+   - `PUBLIC_SUPABASE_URL`
+   - `PUBLIC_SUPABASE_ANON_KEY`
+
+Comportamiento:
+
+- si esas variables existen, la app usa Supabase
+- si no existen, mantiene el modo local actual
+
+Importante:
+
+- esta primera integracion es `compartida para todos`
+- cualquiera que tenga la app y esas credenciales accede a la misma agenda
+- no hay login ni permisos por usuario todavia
+
 ## Scripts
 
 - `pnpm install`

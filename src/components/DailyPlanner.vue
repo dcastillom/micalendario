@@ -1,6 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import LocalityAutocomplete from "./LocalityAutocomplete.vue";
+import {
+  detectStorageMode,
+  type StorageModeStatus,
+} from "../lib/supabase-client";
 import {
   createEmptyEntry,
   createEmptyDay,
@@ -49,6 +53,8 @@ const loading = ref(true);
 const monthLoading = ref(true);
 const savingState = ref<"idle" | "saving" | "saved" | "error">("idle");
 const hydrating = ref(false);
+const suppressAutoSave = ref(false);
+const storageModeStatus = ref<StorageModeStatus>("checking");
 const monthRecords = ref<Record<string, DayRecord>>({});
 const allRecords = ref<Record<string, DayRecord>>({});
 const asignadoOptions = ref<string[]>([]);
@@ -145,6 +151,51 @@ const occupiedRows = computed(
 const lastSavedLabel = computed(() =>
   formatTimestamp(dayRecord.value.updatedAt),
 );
+const savingStateLabel = computed(() => {
+  if (savingState.value === "saving") {
+    return "Guardando...";
+  }
+
+  if (savingState.value === "saved") {
+    return "Guardado";
+  }
+
+  if (savingState.value === "error") {
+    return "Error al guardar";
+  }
+
+  return "Listo";
+});
+const storageModeLabel = computed(() => {
+  if (storageModeStatus.value === "supabase") {
+    return "Supabase";
+  }
+
+  if (storageModeStatus.value === "error") {
+    return "Error de conexion";
+  }
+
+  if (storageModeStatus.value === "checking") {
+    return "Comprobando conexion";
+  }
+
+  return "Local";
+});
+const storageCaption = computed(() => {
+  if (storageModeStatus.value === "supabase") {
+    return "Datos sincronizados con Supabase";
+  }
+
+  if (storageModeStatus.value === "error") {
+    return "No se pudo conectar con Supabase. Revisa la configuracion.";
+  }
+
+  if (storageModeStatus.value === "checking") {
+    return "Comprobando el estado de la conexion...";
+  }
+
+  return "Datos guardados solo en este dispositivo";
+});
 const normalizedReferenceFilter = computed(() =>
   referenceFilter.value.trim().toLocaleLowerCase("es-ES"),
 );
@@ -217,13 +268,21 @@ function syncAllRecordsRecord(record: DayRecord) {
   };
 }
 
+async function applyLoadedDayRecord(record: DayRecord) {
+  suppressAutoSave.value = true;
+  dayRecord.value = record;
+  syncMonthRecord(record);
+  syncAllRecordsRecord(record);
+  await nextTick();
+  suppressAutoSave.value = false;
+}
+
 async function persistDay() {
   savingState.value = "saving";
 
   try {
-    dayRecord.value = await saveDay(dayRecord.value);
-    syncMonthRecord(dayRecord.value);
-    syncAllRecordsRecord(dayRecord.value);
+    const savedRecord = await saveDay(dayRecord.value);
+    await applyLoadedDayRecord(savedRecord);
     savingState.value = "saved";
   } catch (error) {
     console.error(error);
@@ -270,9 +329,7 @@ async function loadSelectedDay(dateKey = selectedDate.value) {
       return;
     }
 
-    dayRecord.value = record;
-    syncMonthRecord(record);
-    syncAllRecordsRecord(record);
+    await applyLoadedDayRecord(record);
     savingState.value = "idle";
   } finally {
     if (requestId === dayLoadRequest) {
@@ -318,6 +375,15 @@ async function loadAsignadoOptions() {
     console.error(error);
     asignadoOptionError.value =
       "No se pudieron cargar las opciones de asignado.";
+  }
+}
+
+async function refreshStorageMode() {
+  try {
+    storageModeStatus.value = await detectStorageMode();
+  } catch (error) {
+    console.error(error);
+    storageModeStatus.value = "error";
   }
 }
 
@@ -451,6 +517,10 @@ watch(selectedDate, (nextDate, previousDate) => {
 watch(
   dayRecord,
   () => {
+    if (suppressAutoSave.value) {
+      return;
+    }
+
     syncMonthRecord(dayRecord.value);
     syncAllRecordsRecord(dayRecord.value);
     queueSave();
@@ -459,6 +529,7 @@ watch(
 );
 
 onMounted(() => {
+  void refreshStorageMode();
   void loadAllRecords();
   void loadAsignadoOptions();
   void loadSelectedDay();
@@ -469,7 +540,13 @@ onMounted(() => {
 <template>
   <main class="planner-app">
     <section class="planner-sheet">
-      <section class="sheet-toolbar">
+      <section
+        class="sheet-toolbar"
+        :class="{
+          'sheet-toolbar--day': viewMode === 'day',
+          'sheet-toolbar--month': viewMode === 'month',
+        }"
+      >
         <div class="view-switch">
           <button
             class="ghost-button"
@@ -507,7 +584,7 @@ onMounted(() => {
           </label>
         </div>
 
-        <div v-if="viewMode === 'month'">
+        <div v-if="viewMode === 'month'" class="toolbar-search">
           <label class="field month-summary__search">
             <input
               v-model="referenceFilter"
@@ -518,6 +595,9 @@ onMounted(() => {
         </div>
 
         <div class="sheet-actions">
+          <!-- <span class="save-pill" :data-state="savingState">
+            {{ savingStateLabel }}
+          </span> -->
           <button
             v-if="viewMode === 'day'"
             class="soft-button"
@@ -790,6 +870,12 @@ onMounted(() => {
           </article>
         </div>
       </div>
+
+      <footer class="sheet-footer">
+        <small class="storage-caption">
+          {{ storageCaption }}
+        </small>
+      </footer>
     </section>
   </main>
 </template>

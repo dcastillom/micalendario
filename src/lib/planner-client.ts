@@ -1,8 +1,12 @@
 import type { DayEntry, DayRecord, PlannerSettings } from "./planner-types";
+import { getSupabaseClient, hasSupabaseConfig } from "./supabase-client";
 
 const STORAGE_KEY = "mi-calendario-days";
 const SETTINGS_KEY = "mi-calendario-settings";
 const DEFAULT_ASIGNADO_OPTIONS = ["Bea", "Cris", "Gloria", "Alfredo", "Yo"];
+const REMOTE_DAYS_TABLE = "planner_days";
+const REMOTE_SETTINGS_TABLE = "planner_settings";
+const REMOTE_SHARED_SETTINGS_ID = "shared";
 
 function createId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -37,6 +41,12 @@ function normalizeRecord(record: DayRecord): DayRecord {
     entries: record.entries.map((entry) => normalizeEntry(entry as DayEntry & { pedido?: string })),
     updatedAt: record.updatedAt || new Date().toISOString()
   };
+}
+
+function normalizeRecordMap(days: Record<string, DayRecord>) {
+  return Object.fromEntries(
+    Object.entries(days).map(([dateKey, record]) => [dateKey, normalizeRecord(record)])
+  );
 }
 
 function normalizeAsignadoOptions(options: string[]) {
@@ -80,6 +90,179 @@ export function createEmptyDay(dateKey: string): DayRecord {
     notes: "",
     entries: [],
     updatedAt: new Date().toISOString()
+  });
+}
+
+function getMonthBounds(monthKey: string) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const start = `${monthKey}-01`;
+  const nextMonthDate = new Date(year, month, 1);
+  const nextMonth = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, "0")}-01`;
+
+  return { start, nextMonth };
+}
+
+function serializeRemoteRecord(record: DayRecord) {
+  return {
+    date_key: record.dateKey,
+    notes: record.notes,
+    entries: record.entries,
+    updated_at: record.updatedAt
+  };
+}
+
+function normalizeRemoteRecord(row: {
+  date_key: string;
+  notes: string | null;
+  entries: DayEntry[] | null;
+  updated_at: string | null;
+}) {
+  return normalizeRecord({
+    dateKey: row.date_key,
+    notes: row.notes ?? "",
+    entries: Array.isArray(row.entries) ? row.entries : [],
+    updatedAt: row.updated_at ?? new Date().toISOString()
+  });
+}
+
+async function loadRemoteDay(dateKey: string) {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from(REMOTE_DAYS_TABLE)
+    .select("date_key, notes, entries, updated_at")
+    .eq("date_key", dateKey)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data ? normalizeRemoteRecord(data) : null;
+}
+
+async function loadRemoteDaysForMonth(monthKey: string) {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    return null;
+  }
+
+  const { start, nextMonth } = getMonthBounds(monthKey);
+  const { data, error } = await supabase
+    .from(REMOTE_DAYS_TABLE)
+    .select("date_key, notes, entries, updated_at")
+    .gte("date_key", start)
+    .lt("date_key", nextMonth)
+    .order("date_key", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return Object.fromEntries((data ?? []).map((row) => [row.date_key, normalizeRemoteRecord(row)]));
+}
+
+async function loadRemoteAllDays() {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from(REMOTE_DAYS_TABLE)
+    .select("date_key, notes, entries, updated_at")
+    .order("date_key", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return Object.fromEntries((data ?? []).map((row) => [row.date_key, normalizeRemoteRecord(row)]));
+}
+
+async function saveRemoteDay(record: DayRecord) {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from(REMOTE_DAYS_TABLE)
+    .upsert(serializeRemoteRecord(record), { onConflict: "date_key" })
+    .select("date_key, notes, entries, updated_at")
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return normalizeRemoteRecord(data);
+}
+
+async function loadRemoteSettings() {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from(REMOTE_SETTINGS_TABLE)
+    .select("asignado_options")
+    .eq("id", REMOTE_SHARED_SETTINGS_ID)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return normalizeSettings(
+    data
+      ? {
+          asignadoOptions: Array.isArray(data.asignado_options)
+            ? data.asignado_options.map((value) => String(value))
+            : []
+        }
+      : undefined
+  );
+}
+
+async function saveRemoteSettings(settings: PlannerSettings) {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    return null;
+  }
+
+  const normalized = normalizeSettings(settings);
+  const { data, error } = await supabase
+    .from(REMOTE_SETTINGS_TABLE)
+    .upsert(
+      {
+        id: REMOTE_SHARED_SETTINGS_ID,
+        asignado_options: normalized.asignadoOptions,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: "id" }
+    )
+    .select("asignado_options")
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return normalizeSettings({
+    asignadoOptions: Array.isArray(data.asignado_options)
+      ? data.asignado_options.map((value) => String(value))
+      : []
   });
 }
 
@@ -136,6 +319,15 @@ function writeBrowserSettings(settings: PlannerSettings) {
 }
 
 export async function loadDay(dateKey: string): Promise<DayRecord> {
+  if (hasSupabaseConfig()) {
+    try {
+      const record = await loadRemoteDay(dateKey);
+      return normalizeRecord(record ?? createEmptyDay(dateKey));
+    } catch (error) {
+      console.error("No se pudo cargar el dia desde Supabase.", error);
+    }
+  }
+
   if (typeof window !== "undefined" && window.desktopPlanner) {
     const record = await window.desktopPlanner.getDay(dateKey);
     return normalizeRecord(record ?? createEmptyDay(dateKey));
@@ -146,33 +338,43 @@ export async function loadDay(dateKey: string): Promise<DayRecord> {
 }
 
 export async function loadDaysForMonth(monthKey: string): Promise<Record<string, DayRecord>> {
+  if (hasSupabaseConfig()) {
+    try {
+      const days = await loadRemoteDaysForMonth(monthKey);
+      return normalizeRecordMap(days ?? {});
+    } catch (error) {
+      console.error("No se pudieron cargar los dias del mes desde Supabase.", error);
+    }
+  }
+
   if (typeof window !== "undefined" && window.desktopPlanner) {
     const days = await window.desktopPlanner.getDaysForMonth(monthKey);
-    return Object.fromEntries(
-      Object.entries(days).map(([dateKey, record]) => [dateKey, normalizeRecord(record)])
-    );
+    return normalizeRecordMap(days);
   }
 
   const days = readBrowserStore();
-  return Object.fromEntries(
-    Object.entries(days)
-      .filter(([dateKey]) => dateKey.startsWith(`${monthKey}-`))
-      .map(([dateKey, record]) => [dateKey, normalizeRecord(record)])
+  return normalizeRecordMap(
+    Object.fromEntries(Object.entries(days).filter(([dateKey]) => dateKey.startsWith(`${monthKey}-`)))
   );
 }
 
 export async function loadAllDays(): Promise<Record<string, DayRecord>> {
+  if (hasSupabaseConfig()) {
+    try {
+      const days = await loadRemoteAllDays();
+      return normalizeRecordMap(days ?? {});
+    } catch (error) {
+      console.error("No se pudieron cargar todos los dias desde Supabase.", error);
+    }
+  }
+
   if (typeof window !== "undefined" && window.desktopPlanner) {
     const days = await window.desktopPlanner.getAllDays();
-    return Object.fromEntries(
-      Object.entries(days).map(([dateKey, record]) => [dateKey, normalizeRecord(record)])
-    );
+    return normalizeRecordMap(days);
   }
 
   const days = readBrowserStore();
-  return Object.fromEntries(
-    Object.entries(days).map(([dateKey, record]) => [dateKey, normalizeRecord(record)])
-  );
+  return normalizeRecordMap(days);
 }
 
 export async function saveDay(record: DayRecord): Promise<DayRecord> {
@@ -180,6 +382,19 @@ export async function saveDay(record: DayRecord): Promise<DayRecord> {
     ...record,
     updatedAt: new Date().toISOString()
   });
+
+  if (hasSupabaseConfig()) {
+    try {
+      const saved = await saveRemoteDay(normalized);
+
+      if (saved) {
+        return normalizeRecord(saved);
+      }
+    } catch (error) {
+      console.error("No se pudo guardar el dia en Supabase.", error);
+      throw error;
+    }
+  }
 
   if (typeof window !== "undefined" && window.desktopPlanner) {
     return normalizeRecord(await window.desktopPlanner.saveDay(normalized));
@@ -192,6 +407,14 @@ export async function saveDay(record: DayRecord): Promise<DayRecord> {
 }
 
 export async function loadSettings(): Promise<PlannerSettings> {
+  if (hasSupabaseConfig()) {
+    try {
+      return normalizeSettings(await loadRemoteSettings());
+    } catch (error) {
+      console.error("No se pudo cargar la configuracion desde Supabase.", error);
+    }
+  }
+
   if (typeof window !== "undefined" && window.desktopPlanner) {
     return normalizeSettings(await window.desktopPlanner.getSettings());
   }
@@ -201,6 +424,16 @@ export async function loadSettings(): Promise<PlannerSettings> {
 
 export async function saveSettings(settings: PlannerSettings): Promise<PlannerSettings> {
   const normalized = normalizeSettings(settings);
+
+  if (hasSupabaseConfig()) {
+    try {
+      const saved = await saveRemoteSettings(normalized);
+      return normalizeSettings(saved);
+    } catch (error) {
+      console.error("No se pudo guardar la configuracion en Supabase.", error);
+      throw error;
+    }
+  }
 
   if (typeof window !== "undefined" && window.desktopPlanner) {
     return normalizeSettings(await window.desktopPlanner.saveSettings(normalized));
