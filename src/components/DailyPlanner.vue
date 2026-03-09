@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import LocalityAutocomplete from "./LocalityAutocomplete.vue";
 import {
   detectStorageMode,
@@ -23,6 +30,7 @@ import type { DayRecord } from "../lib/planner-types";
 
 const AUTO_BACKUP_INTERVAL_MS = 30 * 60 * 1000;
 const AUTO_BACKUP_DEBOUNCE_MS = 20 * 1000;
+const NEW_ENTRY_SCROLL_TOP_OFFSET = 140;
 
 function todayKey() {
   const now = new Date();
@@ -79,6 +87,7 @@ let dayLoadRequest = 0;
 let monthLoadRequest = 0;
 let backupInFlight = false;
 let backupQueued = false;
+const entryRowElements = new Map<string, HTMLElement>();
 
 const formattedTitle = computed(() => formatHeader(selectedDate.value));
 const monthKey = computed(() => selectedDate.value.slice(0, 7));
@@ -600,9 +609,39 @@ function summarizeDay(record: DayRecord | null) {
   };
 }
 
-function addRow() {
-  dayRecord.value.entries.push(createEmptyEntry());
+function setEntryRowRef(id: string, element: Element | null) {
+  if (element instanceof HTMLElement) {
+    entryRowElements.set(id, element);
+    return;
+  }
+
+  entryRowElements.delete(id);
+}
+
+function scrollToEntry(id: string) {
+  const element = entryRowElements.get(id);
+
+  if (!element) {
+    return;
+  }
+
+  const targetTop =
+    window.scrollY +
+    element.getBoundingClientRect().top -
+    NEW_ENTRY_SCROLL_TOP_OFFSET;
+
+  window.scrollTo({
+    top: Math.max(0, targetTop),
+    behavior: "smooth",
+  });
+}
+
+async function addRow() {
+  const entry = createEmptyEntry();
+  dayRecord.value.entries.push(entry);
   queueSave();
+  await nextTick();
+  scrollToEntry(entry.id);
 }
 
 function removeRow(id: string) {
@@ -950,7 +989,7 @@ onBeforeUnmount(() => {
                   v-if="summarizeDay(cell.record).extraCount > 0"
                   class="month-card__more"
                 >
-                  +{{ summarizeDay(cell.record).extraCount }} mas
+                  +{{ summarizeDay(cell.record).extraCount }} más
                 </span>
               </button>
             </template>
@@ -973,6 +1012,7 @@ onBeforeUnmount(() => {
           <article
             v-for="(entry, index) in dayRecord.entries"
             :key="entry.id"
+            :ref="(element) => setEntryRowRef(entry.id, element)"
             class="sheet-grid sheet-grid--row"
           >
             <div class="row-topbar">
