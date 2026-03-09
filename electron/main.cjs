@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu } = require("electron");
 const { PlannerStore } = require("./planner-store.cjs");
 
 let plannerStore;
@@ -82,6 +82,11 @@ async function createWindow() {
     }
   });
 
+  if (process.platform !== "darwin") {
+    window.setMenuBarVisibility(false);
+    window.autoHideMenuBar = true;
+  }
+
   const devServerUrl = process.env.DEV_SERVER_URL;
 
   if (devServerUrl) {
@@ -96,6 +101,10 @@ async function createWindow() {
 
 app.whenReady().then(async () => {
   plannerStore = new PlannerStore(app);
+
+  if (process.platform !== "darwin") {
+    Menu.setApplicationMenu(null);
+  }
 
   ipcMain.handle("planner:get-day", (_event, dateKey) => plannerStore.getDay(dateKey));
   ipcMain.handle("planner:get-all-days", () => plannerStore.getAllDays());
