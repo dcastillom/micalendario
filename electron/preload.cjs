@@ -6,5 +6,7 @@ contextBridge.exposeInMainWorld("desktopPlanner", {
   getDaysForMonth: (monthKey) => ipcRenderer.invoke("planner:get-days-for-month", monthKey),
   saveDay: (record) => ipcRenderer.invoke("planner:save-day", record),
   getSettings: () => ipcRenderer.invoke("planner:get-settings"),
-  saveSettings: (settings) => ipcRenderer.invoke("planner:save-settings", settings)
+  saveSettings: (settings) => ipcRenderer.invoke("planner:save-settings", settings),
+  saveBackup: (snapshot) => ipcRenderer.invoke("planner:save-backup", snapshot),
+  openBackupFolder: () => ipcRenderer.invoke("planner:open-backup-folder")
 });

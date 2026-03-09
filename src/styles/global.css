@@ -683,6 +683,9 @@ button {
 
 .sheet-footer {
   display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
   justify-content: flex-end;
   padding-top: 4px;
 }
@@ -691,6 +694,30 @@ button {
   color: rgba(31, 48, 40, 0.56);
   font-size: 0.8rem;
   letter-spacing: 0.02em;
+}
+
+.footer-link {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent-strong);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+  cursor: pointer;
+}
+
+.footer-link:hover {
+  opacity: 0.84;
+}
+
+.footer-link:disabled {
+  opacity: 0.48;
+  cursor: default;
+  text-decoration-style: dotted;
 }
 
 .sheet-overview {

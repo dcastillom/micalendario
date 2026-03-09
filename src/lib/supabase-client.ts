@@ -2,7 +2,12 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 let supabaseClient: SupabaseClient | null | undefined;
 
-export type StorageModeStatus = "checking" | "supabase" | "local" | "error";
+export type StorageModeStatus =
+  | "checking"
+  | "supabase"
+  | "local"
+  | "missing-config"
+  | "error";
 
 function getSupabaseUrl() {
   return import.meta.env.PUBLIC_SUPABASE_URL?.trim() || "";
@@ -38,13 +43,13 @@ export function getSupabaseClient() {
 
 export async function detectStorageMode(): Promise<StorageModeStatus> {
   if (!hasSupabaseConfig()) {
-    return "local";
+    return "missing-config";
   }
 
   const supabase = getSupabaseClient();
 
   if (!supabase) {
-    return "local";
+    return "missing-config";
   }
 
   const { error } = await supabase

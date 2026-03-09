@@ -43,6 +43,16 @@ Importante:
 - cualquiera que tenga la app y esas credenciales accede a la misma agenda
 - no hay login ni permisos por usuario todavia
 
+## Backups automaticos
+
+En la app de escritorio se genera un backup JSON automatico:
+
+- al arrancar la app
+- despues de guardar cambios
+- cada `30` minutos mientras la app siga abierta
+
+Se guardan hasta `30` copias recientes en la carpeta `backups` dentro del directorio de datos del usuario de Electron.
+
 ## Scripts
 
 - `pnpm install`
@@ -85,6 +95,13 @@ Como usarlo:
 3. Sube la etiqueta:
    `git push origin v0.1.0`
 4. GitHub Actions generara la release con los instalables adjuntos.
+
+Secrets necesarios en GitHub Actions:
+
+- `PUBLIC_SUPABASE_URL`
+- `PUBLIC_SUPABASE_ANON_KEY`
+
+Sin esos secrets, la build publicada se genera en modo local y mostrara que guarda los datos solo en ese dispositivo.
 
 Tambien puedes lanzarlo manualmente desde `Actions > Build Desktop Release`.
 

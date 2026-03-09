@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import LocalityAutocomplete from "./LocalityAutocomplete.vue";
 import {
   detectStorageMode,
@@ -12,10 +12,15 @@ import {
   loadDay,
   loadDaysForMonth,
   loadSettings,
+  openDesktopBackupFolder,
+  saveDesktopBackup,
   saveDay,
   saveSettings,
 } from "../lib/planner-client";
 import type { DayRecord } from "../lib/planner-types";
+
+const AUTO_BACKUP_INTERVAL_MS = 30 * 60 * 1000;
+const AUTO_BACKUP_DEBOUNCE_MS = 20 * 1000;
 
 function todayKey() {
   const now = new Date();
@@ -62,10 +67,15 @@ const asignadoEditorOpen = ref(false);
 const newAsignadoOption = ref("");
 const asignadoOptionError = ref("");
 const referenceFilter = ref("");
+const canOpenBackupFolder = ref(false);
 
 let saveTimer: number | undefined;
+let backupTimer: number | undefined;
+let backupIntervalId: number | undefined;
 let dayLoadRequest = 0;
 let monthLoadRequest = 0;
+let backupInFlight = false;
+let backupQueued = false;
 
 const formattedTitle = computed(() => formatHeader(selectedDate.value));
 const monthKey = computed(() => selectedDate.value.slice(0, 7));
@@ -171,6 +181,10 @@ const storageModeLabel = computed(() => {
     return "Supabase";
   }
 
+  if (storageModeStatus.value === "missing-config") {
+    return "Sin configurar";
+  }
+
   if (storageModeStatus.value === "error") {
     return "Error de conexion";
   }
@@ -184,6 +198,10 @@ const storageModeLabel = computed(() => {
 const storageCaption = computed(() => {
   if (storageModeStatus.value === "supabase") {
     return "Datos sincronizados con Supabase";
+  }
+
+  if (storageModeStatus.value === "missing-config") {
+    return "Esta build no incluye la configuracion de Supabase. Los datos se guardan solo en este dispositivo.";
   }
 
   if (storageModeStatus.value === "error") {
@@ -284,6 +302,7 @@ async function persistDay() {
     const savedRecord = await saveDay(dayRecord.value);
     await applyLoadedDayRecord(savedRecord);
     savingState.value = "saved";
+    queueDesktopBackup("day-save");
   } catch (error) {
     console.error(error);
     savingState.value = "error";
@@ -297,6 +316,7 @@ async function persistAsignadoOptions(nextOptions: string[]) {
     const settings = await saveSettings({ asignadoOptions: nextOptions });
     asignadoOptions.value = settings.asignadoOptions;
     savingState.value = "saved";
+    queueDesktopBackup("settings-save");
   } catch (error) {
     console.error(error);
     savingState.value = "error";
@@ -367,6 +387,72 @@ async function loadAllRecords() {
   }
 }
 
+async function runDesktopBackup(reason: string) {
+  if (typeof window === "undefined" || !window.desktopPlanner?.saveBackup) {
+    return;
+  }
+
+  if (backupInFlight) {
+    backupQueued = true;
+    return;
+  }
+
+  backupInFlight = true;
+
+  try {
+    const [days, settings] = await Promise.all([loadAllDays(), loadSettings()]);
+    await saveDesktopBackup({
+      createdAt: new Date().toISOString(),
+      storageMode: storageModeStatus.value,
+      days,
+      settings,
+    });
+    console.info("[backup] completed", reason);
+  } catch (error) {
+    console.error("No se pudo generar el backup automatico.", error);
+  } finally {
+    backupInFlight = false;
+
+    if (backupQueued) {
+      backupQueued = false;
+      void runDesktopBackup("queued");
+    }
+  }
+}
+
+function queueDesktopBackup(reason: string) {
+  if (typeof window === "undefined" || !window.desktopPlanner?.saveBackup) {
+    return;
+  }
+
+  if (backupTimer) {
+    window.clearTimeout(backupTimer);
+  }
+
+  backupTimer = window.setTimeout(() => {
+    backupTimer = undefined;
+    void runDesktopBackup(reason);
+  }, AUTO_BACKUP_DEBOUNCE_MS);
+}
+
+const backupLinkLabel = computed(() =>
+  canOpenBackupFolder.value
+    ? "Abrir carpeta de backups"
+    : "Backups: solo en la app de escritorio",
+);
+
+async function openBackupFolder() {
+  if (!canOpenBackupFolder.value) {
+    return;
+  }
+
+  try {
+    await openDesktopBackupFolder();
+  } catch (error) {
+    console.error("No se pudo abrir la carpeta de backups.", error);
+  }
+}
+
 async function loadAsignadoOptions() {
   try {
     const settings = await loadSettings();
@@ -381,6 +467,7 @@ async function loadAsignadoOptions() {
 async function refreshStorageMode() {
   try {
     storageModeStatus.value = await detectStorageMode();
+    console.info("[storage] mode", storageModeStatus.value);
   } catch (error) {
     console.error(error);
     storageModeStatus.value = "error";
@@ -529,11 +616,35 @@ watch(
 );
 
 onMounted(() => {
+  canOpenBackupFolder.value = Boolean(
+    typeof window !== "undefined" && window.desktopPlanner?.openBackupFolder,
+  );
   void refreshStorageMode();
   void loadAllRecords();
   void loadAsignadoOptions();
   void loadSelectedDay();
   void loadSelectedMonth();
+
+  if (typeof window !== "undefined" && window.desktopPlanner?.saveBackup) {
+    queueDesktopBackup("startup");
+    backupIntervalId = window.setInterval(() => {
+      void runDesktopBackup("interval");
+    }, AUTO_BACKUP_INTERVAL_MS);
+  }
+});
+
+onBeforeUnmount(() => {
+  if (saveTimer) {
+    window.clearTimeout(saveTimer);
+  }
+
+  if (backupTimer) {
+    window.clearTimeout(backupTimer);
+  }
+
+  if (backupIntervalId) {
+    window.clearInterval(backupIntervalId);
+  }
 });
 </script>
 
@@ -875,6 +986,14 @@ onMounted(() => {
         <small class="storage-caption">
           {{ storageCaption }}
         </small>
+        <button
+          class="footer-link"
+          :disabled="!canOpenBackupFolder"
+          type="button"
+          @click="openBackupFolder"
+        >
+          {{ backupLinkLabel }}
+        </button>
       </footer>
     </section>
   </main>

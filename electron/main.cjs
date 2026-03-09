@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
-const { app, BrowserWindow, ipcMain, Menu } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu, shell } = require("electron");
 const { PlannerStore } = require("./planner-store.cjs");
 
 let plannerStore;
@@ -112,6 +112,17 @@ app.whenReady().then(async () => {
   ipcMain.handle("planner:save-day", (_event, record) => plannerStore.saveDay(record));
   ipcMain.handle("planner:get-settings", () => plannerStore.getSettings());
   ipcMain.handle("planner:save-settings", (_event, settings) => plannerStore.saveSettings(settings));
+  ipcMain.handle("planner:save-backup", (_event, snapshot) => plannerStore.saveBackup(snapshot));
+  ipcMain.handle("planner:open-backup-folder", async () => {
+    const backupDir = plannerStore.getBackupDir();
+    const errorMessage = await shell.openPath(backupDir);
+
+    if (errorMessage) {
+      throw new Error(errorMessage);
+    }
+
+    return backupDir;
+  });
 
   await createWindow();
 

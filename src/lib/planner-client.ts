@@ -1,5 +1,5 @@
 import type { DayEntry, DayRecord, PlannerSettings } from "./planner-types";
-import { getSupabaseClient, hasSupabaseConfig } from "./supabase-client";
+import { getSupabaseClient, hasSupabaseConfig, type StorageModeStatus } from "./supabase-client";
 
 const STORAGE_KEY = "mi-calendario-days";
 const SETTINGS_KEY = "mi-calendario-settings";
@@ -7,6 +7,13 @@ const DEFAULT_ASIGNADO_OPTIONS = ["Bea", "Cris", "Gloria", "Alfredo", "Yo"];
 const REMOTE_DAYS_TABLE = "planner_days";
 const REMOTE_SETTINGS_TABLE = "planner_settings";
 const REMOTE_SHARED_SETTINGS_ID = "shared";
+
+export interface PlannerBackupSnapshot {
+  createdAt: string;
+  storageMode: StorageModeStatus;
+  days: Record<string, DayRecord>;
+  settings: PlannerSettings;
+}
 
 function createId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -441,4 +448,22 @@ export async function saveSettings(settings: PlannerSettings): Promise<PlannerSe
 
   writeBrowserSettings(normalized);
   return normalized;
+}
+
+export async function saveDesktopBackup(snapshot: PlannerBackupSnapshot): Promise<boolean> {
+  if (typeof window === "undefined" || !window.desktopPlanner?.saveBackup) {
+    return false;
+  }
+
+  await window.desktopPlanner.saveBackup(snapshot);
+  return true;
+}
+
+export async function openDesktopBackupFolder(): Promise<boolean> {
+  if (typeof window === "undefined" || !window.desktopPlanner?.openBackupFolder) {
+    return false;
+  }
+
+  await window.desktopPlanner.openBackupFolder();
+  return true;
 }

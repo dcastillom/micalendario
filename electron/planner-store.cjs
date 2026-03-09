@@ -2,6 +2,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const DEFAULT_ASIGNADO_OPTIONS = ["Bea", "Cris", "Gloria", "Alfredo", "Yo"];
+const BACKUP_FILE_PREFIX = "planner-backup-";
+const MAX_BACKUP_FILES = 30;
 
 function sortAsignadoOptions(options) {
   return [...options].sort((left, right) =>
@@ -16,6 +18,7 @@ function clone(value) {
 class PlannerStore {
   constructor(app) {
     this.filePath = path.join(app.getPath("userData"), "planner-store.json");
+    this.backupDir = path.join(app.getPath("userData"), "backups");
     this.data = this.load();
   }
 
@@ -67,6 +70,46 @@ class PlannerStore {
   persist() {
     fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
     fs.writeFileSync(this.filePath, JSON.stringify(this.data, null, 2), "utf8");
+  }
+
+  saveBackup(snapshot) {
+    fs.mkdirSync(this.backupDir, { recursive: true });
+
+    const safeTimestamp = new Date(snapshot.createdAt ?? Date.now()).toISOString().replace(/[:.]/g, "-");
+    const filePath = path.join(this.backupDir, `${BACKUP_FILE_PREFIX}${safeTimestamp}.json`);
+    const payload = {
+      version: 1,
+      createdAt: snapshot.createdAt ?? new Date().toISOString(),
+      storageMode: snapshot.storageMode ?? "unknown",
+      days: clone(snapshot.days ?? {}),
+      settings: clone(snapshot.settings ?? {})
+    };
+
+    fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
+    this.pruneBackups();
+
+    return {
+      filePath,
+      createdAt: payload.createdAt
+    };
+  }
+
+  pruneBackups() {
+    const backupFiles = fs
+      .readdirSync(this.backupDir, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.startsWith(BACKUP_FILE_PREFIX) && entry.name.endsWith(".json"))
+      .map((entry) => entry.name)
+      .sort()
+      .reverse();
+
+    for (const fileName of backupFiles.slice(MAX_BACKUP_FILES)) {
+      fs.unlinkSync(path.join(this.backupDir, fileName));
+    }
+  }
+
+  getBackupDir() {
+    fs.mkdirSync(this.backupDir, { recursive: true });
+    return this.backupDir;
   }
 
   getDay(dateKey) {
