@@ -13,6 +13,8 @@ import {
   loadDaysForMonth,
   loadSettings,
   openDesktopBackupFolder,
+  restoreBackupSnapshot,
+  selectDesktopBackup,
   saveDesktopBackup,
   saveDay,
   saveSettings,
@@ -68,6 +70,7 @@ const newAsignadoOption = ref("");
 const asignadoOptionError = ref("");
 const referenceFilter = ref("");
 const canOpenBackupFolder = ref(false);
+const canRestoreBackup = ref(false);
 
 let saveTimer: number | undefined;
 let backupTimer: number | undefined;
@@ -441,6 +444,12 @@ const backupLinkLabel = computed(() =>
     : "Backups: solo en la app de escritorio",
 );
 
+const restoreLinkLabel = computed(() =>
+  canRestoreBackup.value
+    ? "Restaurar copia de seguridad"
+    : "Restaurar: solo en la app de escritorio",
+);
+
 async function openBackupFolder() {
   if (!canOpenBackupFolder.value) {
     return;
@@ -450,6 +459,58 @@ async function openBackupFolder() {
     await openDesktopBackupFolder();
   } catch (error) {
     console.error("No se pudo abrir la carpeta de backups.", error);
+  }
+}
+
+async function restoreBackup() {
+  if (!canRestoreBackup.value) {
+    return;
+  }
+
+  if (saveTimer) {
+    window.clearTimeout(saveTimer);
+    saveTimer = undefined;
+  }
+
+  if (backupTimer) {
+    window.clearTimeout(backupTimer);
+    backupTimer = undefined;
+  }
+
+  const confirmed = window.confirm(
+    "Se reemplazaran los datos actuales por la copia seleccionada. Antes de continuar se guardara un backup del estado actual. Quieres seguir?",
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  savingState.value = "saving";
+
+  try {
+    await runDesktopBackup("pre-restore");
+    const snapshot = await selectDesktopBackup();
+
+    if (!snapshot) {
+      savingState.value = "idle";
+      return;
+    }
+
+    await restoreBackupSnapshot(snapshot);
+    await Promise.all([
+      refreshStorageMode(),
+      loadAllRecords(),
+      loadAsignadoOptions(),
+      loadSelectedMonth(),
+      loadSelectedDay(),
+    ]);
+    savingState.value = "saved";
+    queueDesktopBackup("post-restore");
+    window.alert("La copia de seguridad se ha restaurado correctamente.");
+  } catch (error) {
+    console.error("No se pudo restaurar la copia de seguridad.", error);
+    savingState.value = "error";
+    window.alert("No se pudo restaurar la copia de seguridad.");
   }
 }
 
@@ -618,6 +679,9 @@ watch(
 onMounted(() => {
   canOpenBackupFolder.value = Boolean(
     typeof window !== "undefined" && window.desktopPlanner?.openBackupFolder,
+  );
+  canRestoreBackup.value = Boolean(
+    typeof window !== "undefined" && window.desktopPlanner?.selectBackup,
   );
   void refreshStorageMode();
   void loadAllRecords();
@@ -993,6 +1057,14 @@ onBeforeUnmount(() => {
           @click="openBackupFolder"
         >
           {{ backupLinkLabel }}
+        </button>
+        <button
+          class="footer-link"
+          :disabled="!canRestoreBackup"
+          type="button"
+          @click="restoreBackup"
+        >
+          {{ restoreLinkLabel }}
         </button>
       </footer>
     </section>

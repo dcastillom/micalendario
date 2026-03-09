@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
-const { app, BrowserWindow, ipcMain, Menu, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require("electron");
 const { PlannerStore } = require("./planner-store.cjs");
 
 let plannerStore;
@@ -123,6 +123,22 @@ app.whenReady().then(async () => {
 
     return backupDir;
   });
+  ipcMain.handle("planner:select-backup", async () => {
+    const backupDir = plannerStore.getBackupDir();
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: "Selecciona una copia de seguridad",
+      defaultPath: backupDir,
+      properties: ["openFile"],
+      filters: [{ name: "JSON", extensions: ["json"] }]
+    });
+
+    if (canceled || filePaths.length === 0) {
+      return null;
+    }
+
+    return plannerStore.readBackup(filePaths[0]);
+  });
+  ipcMain.handle("planner:replace-data", (_event, snapshot) => plannerStore.replaceData(snapshot));
 
   await createWindow();
 

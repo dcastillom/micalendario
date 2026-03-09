@@ -112,6 +112,31 @@ class PlannerStore {
     return this.backupDir;
   }
 
+  readBackup(filePath) {
+    const raw = fs.readFileSync(filePath, "utf8");
+    const parsed = JSON.parse(raw);
+
+    return {
+      createdAt: typeof parsed?.createdAt === "string" ? parsed.createdAt : new Date().toISOString(),
+      storageMode: typeof parsed?.storageMode === "string" ? parsed.storageMode : "local",
+      days: clone(parsed?.days ?? {}),
+      settings: clone(parsed?.settings ?? {})
+    };
+  }
+
+  replaceData(snapshot) {
+    this.data = this.normalize({
+      version: 2,
+      days: snapshot?.days ?? {},
+      settings: snapshot?.settings ?? {}
+    });
+    this.persist();
+
+    return {
+      dayCount: Object.keys(this.data.days).length
+    };
+  }
+
   getDay(dateKey) {
     return this.data.days[dateKey] ? clone(this.data.days[dateKey]) : null;
   }

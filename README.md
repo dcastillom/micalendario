@@ -53,6 +53,13 @@ En la app de escritorio se genera un backup JSON automatico:
 
 Se guardan hasta `30` copias recientes en la carpeta `backups` dentro del directorio de datos del usuario de Electron.
 
+Desde el footer de la app de escritorio tambien se puede:
+
+- abrir la carpeta de backups
+- restaurar una copia de seguridad JSON
+
+La restauracion reemplaza los datos actuales por los de la copia seleccionada.
+
 ## Scripts
 
 - `pnpm install`

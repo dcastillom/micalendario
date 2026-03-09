@@ -15,6 +15,15 @@ export interface PlannerBackupSnapshot {
   settings: PlannerSettings;
 }
 
+function normalizeBackupSnapshot(snapshot: PlannerBackupSnapshot): PlannerBackupSnapshot {
+  return {
+    createdAt: snapshot.createdAt || new Date().toISOString(),
+    storageMode: snapshot.storageMode,
+    days: normalizeRecordMap(snapshot.days ?? {}),
+    settings: normalizeSettings(snapshot.settings)
+  };
+}
+
 function createId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -273,6 +282,51 @@ async function saveRemoteSettings(settings: PlannerSettings) {
   });
 }
 
+async function replaceRemoteAllData(snapshot: PlannerBackupSnapshot) {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    throw new Error("Supabase no esta disponible.");
+  }
+
+  const normalized = normalizeBackupSnapshot(snapshot);
+  const records = Object.values(normalized.days).map((record) => serializeRemoteRecord(record));
+
+  const { error: deleteDaysError } = await supabase
+    .from(REMOTE_DAYS_TABLE)
+    .delete()
+    .gte("date_key", "0000-01-01");
+
+  if (deleteDaysError) {
+    throw deleteDaysError;
+  }
+
+  if (records.length > 0) {
+    const { error: insertDaysError } = await supabase
+      .from(REMOTE_DAYS_TABLE)
+      .upsert(records, { onConflict: "date_key" });
+
+    if (insertDaysError) {
+      throw insertDaysError;
+    }
+  }
+
+  const { error: settingsError } = await supabase
+    .from(REMOTE_SETTINGS_TABLE)
+    .upsert(
+      {
+        id: REMOTE_SHARED_SETTINGS_ID,
+        asignado_options: normalized.settings.asignadoOptions,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: "id" }
+    );
+
+  if (settingsError) {
+    throw settingsError;
+  }
+}
+
 function readBrowserStore(): Record<string, DayRecord> {
   if (typeof window === "undefined") {
     return {};
@@ -466,4 +520,30 @@ export async function openDesktopBackupFolder(): Promise<boolean> {
 
   await window.desktopPlanner.openBackupFolder();
   return true;
+}
+
+export async function selectDesktopBackup(): Promise<PlannerBackupSnapshot | null> {
+  if (typeof window === "undefined" || !window.desktopPlanner?.selectBackup) {
+    return null;
+  }
+
+  const snapshot = await window.desktopPlanner.selectBackup();
+  return snapshot ? normalizeBackupSnapshot(snapshot) : null;
+}
+
+export async function restoreBackupSnapshot(snapshot: PlannerBackupSnapshot): Promise<void> {
+  const normalized = normalizeBackupSnapshot(snapshot);
+
+  if (hasSupabaseConfig()) {
+    await replaceRemoteAllData(normalized);
+    return;
+  }
+
+  if (typeof window !== "undefined" && window.desktopPlanner?.replaceData) {
+    await window.desktopPlanner.replaceData(normalized);
+    return;
+  }
+
+  writeBrowserStore(normalized.days);
+  writeBrowserSettings(normalized.settings);
 }

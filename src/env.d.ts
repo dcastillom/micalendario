@@ -21,6 +21,8 @@ declare global {
       saveSettings: (settings: PlannerSettings) => Promise<PlannerSettings>;
       saveBackup: (snapshot: PlannerBackupSnapshot) => Promise<{ filePath: string; createdAt: string }>;
       openBackupFolder: () => Promise<string>;
+      selectBackup: () => Promise<PlannerBackupSnapshot | null>;
+      replaceData: (snapshot: PlannerBackupSnapshot) => Promise<{ dayCount: number }>;
     };
   }
 }
