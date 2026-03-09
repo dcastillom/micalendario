@@ -925,7 +925,8 @@ button {
 }
 
 .row-topbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
 }
@@ -934,6 +935,7 @@ button {
   display: grid;
   gap: 2px;
   min-width: 0;
+  align-self: center;
 }
 
 .row-status__label {
@@ -945,8 +947,10 @@ button {
 }
 
 .row-status strong {
+  display: block;
   overflow: hidden;
   font-size: 1rem;
+  line-height: 1.1;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -965,7 +969,8 @@ button {
 }
 
 .inline-remove {
-  margin-left: auto;
+  margin-left: 0;
+  justify-self: end;
   background: rgba(34, 48, 40, 0.06);
   color: var(--muted);
   padding-inline: 14px;
@@ -1171,12 +1176,7 @@ button {
   }
 
   .row-topbar {
-    flex-wrap: wrap;
     align-items: start;
-  }
-
-  .inline-remove {
-    margin-left: 0;
   }
 }
 
