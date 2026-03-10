@@ -321,7 +321,6 @@ onMounted(() => {
     <section class="reports-sheet">
       <header class="reports-header no-print">
         <div class="reports-header__copy">
-          <h1>Listado de informes</h1>
           <p class="sidebar-copy">
             Filtra por cualquier campo del informe y genera un listado listo
             para imprimir.
@@ -443,8 +442,6 @@ onMounted(() => {
       </section>
 
       <section class="reports-print-head only-print">
-        <p class="eyebrow">Listado filtrado</p>
-        <h1>Informes</h1>
         <p>Generado el {{ printTimestampLabel }}</p>
         <p>{{ resultsSummaryLabel }}</p>
         <p v-if="activeFilterTags.length">

@@ -1203,7 +1203,7 @@ button {
 .reports-page {
   display: grid;
   min-height: 100vh;
-  padding: 28px;
+  padding: 0;
 }
 
 .reports-sheet {
@@ -1214,7 +1214,6 @@ button {
   margin: 0 auto;
   padding: 24px;
   border: 1px solid rgba(255, 255, 255, 0.42);
-  border-radius: 32px;
   background: linear-gradient(
     180deg,
     rgba(255, 252, 246, 0.95),
@@ -1621,7 +1620,7 @@ button {
   }
 
   .reports-page {
-    padding: 18px;
+    padding: 0;
   }
 
   .reports-filters {
@@ -1772,7 +1771,7 @@ button {
   }
 
   .reports-page {
-    padding: 14px;
+    padding: 0;
   }
 
   .reports-sheet,
