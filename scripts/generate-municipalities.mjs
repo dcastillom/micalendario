@@ -16,9 +16,16 @@ async function downloadWorkbook(url) {
   return Buffer.from(await response.arrayBuffer());
 }
 
-function extractMunicipalities(buffer) {
+function sortSpanishNames(values) {
+  return [...new Set(values)].sort((left, right) =>
+    left.localeCompare(right, "es", { sensitivity: "base" })
+  );
+}
+
+function extractMunicipalitiesAndProvinces(buffer) {
   const workbook = xlsx.read(buffer, { type: "buffer" });
   const municipalities = [];
+  const provinces = [];
 
   for (const sheetName of workbook.SheetNames) {
     const rows = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], {
@@ -27,6 +34,10 @@ function extractMunicipalities(buffer) {
     });
 
     const province = String(rows[1]?.[0] ?? "").trim();
+
+    if (province) {
+      provinces.push(province);
+    }
 
     for (const row of rows.slice(3)) {
       const municipality = String(row[3] ?? "").trim();
@@ -39,19 +50,29 @@ function extractMunicipalities(buffer) {
     }
   }
 
-  return [...new Set(municipalities)].sort((left, right) =>
-    left.localeCompare(right, "es", { sensitivity: "base" })
-  );
+  return {
+    municipalities: sortSpanishNames(municipalities),
+    provinces: sortSpanishNames(provinces)
+  };
 }
 
-async function writeOutput(municipalities) {
-  const lines = municipalities.map((value) => `  ${JSON.stringify(value)},`);
+async function writeOutput(municipalities, provinces) {
+  const municipalityLines = municipalities.map((value) => `  ${JSON.stringify(value)},`);
+  const provinceLines = provinces.map((value) => `  ${JSON.stringify(value)},`);
   const content = [
     "// Fuente oficial: INE, Relacion de municipios y codigos a 1 de enero de 2026.",
     "// Generado con scripts/generate-municipalities.mjs.",
     "export const SPANISH_MUNICIPALITIES = [",
-    ...lines,
-    "] as const;"
+    ...municipalityLines,
+    "] as const;",
+    "",
+    "export const SPANISH_PROVINCES = [",
+    ...provinceLines,
+    "] as const;",
+    "",
+    "export const SPANISH_LOCALITIES = [...SPANISH_PROVINCES, ...SPANISH_MUNICIPALITIES].sort((left, right) =>",
+    '  left.localeCompare(right, "es", { sensitivity: "base" })',
+    ");"
   ].join("\n");
 
   await fs.mkdir(path.dirname(OUTPUT_FILE), { recursive: true });
@@ -60,9 +81,10 @@ async function writeOutput(municipalities) {
 
 async function main() {
   const buffer = await downloadWorkbook(SOURCE_URL);
-  const municipalities = extractMunicipalities(buffer);
-  await writeOutput(municipalities);
+  const { municipalities, provinces } = extractMunicipalitiesAndProvinces(buffer);
+  await writeOutput(municipalities, provinces);
   console.log(`Municipios generados: ${municipalities.length}`);
+  console.log(`Provincias generadas: ${provinces.length}`);
   console.log(`Salida: ${OUTPUT_FILE}`);
 }
 
