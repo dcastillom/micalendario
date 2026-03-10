@@ -249,6 +249,23 @@ function printResults() {
   window.print();
 }
 
+function getEditUrl(report: ReportListItem) {
+  const params = new URLSearchParams({
+    date: report.dateKey,
+    entry: report.id,
+  });
+
+  return `/?${params.toString()}`;
+}
+
+function openReport(report: ReportListItem) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.location.href = getEditUrl(report);
+}
+
 function mapEntryToListItem(dateKey: string, entry: DayEntry): ReportListItem {
   return {
     id: entry.id,
@@ -473,6 +490,13 @@ onMounted(() => {
               <tr
                 v-for="report in filteredReports"
                 :key="`${report.dateKey}-${report.id}`"
+                class="reports-table__row"
+                tabindex="0"
+                role="link"
+                :aria-label="`Editar informe ${report.referencia || 'sin referencia'} del ${formatDate(report.dateKey)}`"
+                @click="openReport(report)"
+                @keydown.enter.prevent="openReport(report)"
+                @keydown.space.prevent="openReport(report)"
               >
                 <td>
                   <strong>{{ formatDate(report.dateKey) }}</strong>

@@ -80,6 +80,7 @@ const asignadoOptionError = ref("");
 const referenceFilter = ref("");
 const canOpenBackupFolder = ref(false);
 const canRestoreBackup = ref(false);
+const hasInitialized = ref(false);
 const removeDialog = ref<{
   id: string;
   referencia: string;
@@ -93,6 +94,7 @@ let dayLoadRequest = 0;
 let monthLoadRequest = 0;
 let backupInFlight = false;
 let backupQueued = false;
+let pendingEntryId = "";
 const entryRowElements = new Map<string, HTMLElement>();
 
 const formattedTitle = computed(() => formatHeader(selectedDate.value));
@@ -310,6 +312,18 @@ async function applyLoadedDayRecord(record: DayRecord) {
   syncMonthRecord(record);
   syncAllRecordsRecord(record);
   await nextTick();
+
+  if (pendingEntryId) {
+    const hasTargetEntry = record.entries.some((entry) => entry.id === pendingEntryId);
+
+    if (hasTargetEntry) {
+      scrollToEntry(pendingEntryId);
+      focusEntryField(pendingEntryId);
+    }
+
+    pendingEntryId = "";
+  }
+
   suppressAutoSave.value = false;
 }
 
@@ -649,6 +663,36 @@ function scrollToEntry(id: string) {
   });
 }
 
+function focusEntryField(id: string) {
+  const element = entryRowElements.get(id);
+  const target = element?.querySelector("input, select, textarea");
+
+  if (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLSelectElement ||
+    target instanceof HTMLTextAreaElement
+  ) {
+    target.focus({ preventScroll: true });
+  }
+}
+
+function applyInitialNavigationState() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const dateParam = params.get("date")?.trim() ?? "";
+  const entryParam = params.get("entry")?.trim() ?? "";
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+    selectedDate.value = dateParam;
+    viewMode.value = "day";
+  }
+
+  pendingEntryId = entryParam;
+}
+
 function openRemoveDialog(entry: DayEntry) {
   removeDialog.value = {
     id: entry.id,
@@ -742,6 +786,10 @@ async function removeAsignadoOption(optionToRemove: string) {
 }
 
 watch(selectedDate, (nextDate, previousDate) => {
+  if (!hasInitialized.value) {
+    return;
+  }
+
   void loadSelectedDay(nextDate);
 
   if (nextDate.slice(0, 7) !== previousDate.slice(0, 7)) {
@@ -771,11 +819,13 @@ onMounted(() => {
   canRestoreBackup.value = Boolean(
     typeof window !== "undefined" && window.desktopPlanner?.selectBackup,
   );
+  applyInitialNavigationState();
   void refreshStorageMode();
   void loadAllRecords();
   void loadAsignadoOptions();
   void loadSelectedDay();
   void loadSelectedMonth();
+  hasInitialized.value = true;
 
   if (typeof window !== "undefined" && window.desktopPlanner?.saveBackup) {
     queueDesktopBackup("startup");
