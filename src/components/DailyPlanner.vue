@@ -860,6 +860,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="sheet-actions">
+          <a class="ghost-link" href="/filtros">Filtros e impresión</a>
           <!-- <span class="save-pill" :data-state="savingState">
             {{ savingStateLabel }}
           </span> -->
