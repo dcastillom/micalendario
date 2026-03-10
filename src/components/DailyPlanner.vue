@@ -314,7 +314,9 @@ async function applyLoadedDayRecord(record: DayRecord) {
   await nextTick();
 
   if (pendingEntryId) {
-    const hasTargetEntry = record.entries.some((entry) => entry.id === pendingEntryId);
+    const hasTargetEntry = record.entries.some(
+      (entry) => entry.id === pendingEntryId,
+    );
 
     if (hasTargetEntry) {
       scrollToEntry(pendingEntryId);
@@ -910,7 +912,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="sheet-actions">
-          <a class="ghost-link" href="/filtros">Filtros e impresión</a>
+          <a class="ghost-link" href="/filtros">Filtros</a>
           <!-- <span class="save-pill" :data-state="savingState">
             {{ savingStateLabel }}
           </span> -->
