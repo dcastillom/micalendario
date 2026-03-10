@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { loadAllDays, loadSettings } from "../lib/planner-client";
 import type { DayEntry } from "../lib/planner-types";
 
@@ -44,6 +44,9 @@ const loadError = ref("");
 const reports = ref<ReportListItem[]>([]);
 const asignadoOptions = ref<string[]>([]);
 const filters = ref<FiltersState>({ ...DEFAULT_FILTERS });
+const currentPage = ref(1);
+
+const REPORTS_PER_PAGE = 25;
 
 function normalize(value: string) {
   return value
@@ -187,6 +190,29 @@ const filteredReports = computed(() => {
   });
 });
 
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(filteredReports.value.length / REPORTS_PER_PAGE)),
+);
+
+const paginatedReports = computed(() => {
+  const start = (currentPage.value - 1) * REPORTS_PER_PAGE;
+  return filteredReports.value.slice(start, start + REPORTS_PER_PAGE);
+});
+
+const paginationSummaryLabel = computed(() => {
+  if (filteredReports.value.length === 0) {
+    return "";
+  }
+
+  const start = (currentPage.value - 1) * REPORTS_PER_PAGE + 1;
+  const end = Math.min(
+    currentPage.value * REPORTS_PER_PAGE,
+    filteredReports.value.length,
+  );
+
+  return `Mostrando ${start}-${end} de ${filteredReports.value.length}`;
+});
+
 const activeFilterTags = computed(() => {
   const tags: string[] = [];
 
@@ -239,6 +265,14 @@ const resultsSummaryLabel = computed(() => {
 
 function resetFilters() {
   filters.value = { ...DEFAULT_FILTERS };
+}
+
+function goToPreviousPage() {
+  currentPage.value = Math.max(1, currentPage.value - 1);
+}
+
+function goToNextPage() {
+  currentPage.value = Math.min(totalPages.value, currentPage.value + 1);
 }
 
 function printResults() {
@@ -313,6 +347,10 @@ async function loadReports() {
 
 onMounted(() => {
   void loadReports();
+});
+
+watch(filteredReports, () => {
+  currentPage.value = 1;
 });
 </script>
 
@@ -434,6 +472,13 @@ onMounted(() => {
           </span>
         </div>
 
+        <p
+          v-if="filteredReports.length > 0"
+          class="reports-summary__pagination no-print"
+        >
+          {{ paginationSummaryLabel }}
+        </p>
+
         <div v-if="activeFilterTags.length" class="reports-summary__chips">
           <span v-for="tag in activeFilterTags" :key="tag" class="reports-chip">
             {{ tag }}
@@ -469,7 +514,115 @@ onMounted(() => {
         </p>
       </section>
 
-      <section v-else class="reports-results">
+      <section v-else class="reports-results no-print">
+        <div
+          v-if="totalPages > 1"
+          class="reports-pagination no-print"
+          aria-label="Paginación del listado de informes"
+        >
+          <button
+            class="ghost-button"
+            type="button"
+            :disabled="currentPage === 1"
+            @click="goToPreviousPage"
+          >
+            Anterior
+          </button>
+
+          <span class="reports-pagination__status">
+            Página {{ currentPage }} de {{ totalPages }}
+          </span>
+
+          <button
+            class="ghost-button"
+            type="button"
+            :disabled="currentPage === totalPages"
+            @click="goToNextPage"
+          >
+            Siguiente
+          </button>
+        </div>
+
+        <div class="reports-table-wrap">
+          <table class="reports-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Referencia</th>
+                <th>Asignado</th>
+                <th>Planos</th>
+                <th>Localidad</th>
+                <th class="reports-table__notes">Observaciones</th>
+                <th>Entregado</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="report in paginatedReports"
+                :key="`${report.dateKey}-${report.id}`"
+                class="reports-table__row"
+                tabindex="0"
+                role="link"
+                :aria-label="`Editar informe ${report.referencia || 'sin referencia'} del ${formatDate(report.dateKey)}`"
+                @click="openReport(report)"
+                @keydown.enter.prevent="openReport(report)"
+                @keydown.space.prevent="openReport(report)"
+              >
+                <td>
+                  <strong>{{ formatDate(report.dateKey) }}</strong>
+                  <span>{{ formatDateLong(report.dateKey) }}</span>
+                </td>
+                <td>{{ report.referencia || "Sin referencia" }}</td>
+                <td>{{ report.asignado || "Sin asignar" }}</td>
+                <td>{{ getPlanoLabel(report.plano) }}</td>
+                <td>{{ report.localidad || "Sin localidad" }}</td>
+                <td class="reports-table__notes">
+                  {{ report.observaciones || "Sin observaciones" }}
+                </td>
+                <td>{{ getEntregadoLabel(report.entregado) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div
+          v-if="totalPages > 1"
+          class="reports-pagination reports-pagination--bottom no-print"
+          aria-label="Paginación inferior del listado de informes"
+        >
+          <button
+            class="ghost-button"
+            type="button"
+            :disabled="currentPage === 1"
+            @click="goToPreviousPage"
+          >
+            Anterior
+          </button>
+
+          <span class="reports-pagination__status">
+            Página {{ currentPage }} de {{ totalPages }}
+          </span>
+
+          <button
+            class="ghost-button"
+            type="button"
+            :disabled="currentPage === totalPages"
+            @click="goToNextPage"
+          >
+            Siguiente
+          </button>
+        </div>
+      </section>
+
+      <section
+        v-if="
+          !loading &&
+          !loadError &&
+          reports.length > 0 &&
+          filteredReports.length > 0
+        "
+        class="reports-results only-print"
+      >
         <div class="reports-table-wrap">
           <table class="reports-table">
             <thead>
@@ -486,14 +639,8 @@ onMounted(() => {
             <tbody>
               <tr
                 v-for="report in filteredReports"
-                :key="`${report.dateKey}-${report.id}`"
+                :key="`print-${report.dateKey}-${report.id}`"
                 class="reports-table__row"
-                tabindex="0"
-                role="link"
-                :aria-label="`Editar informe ${report.referencia || 'sin referencia'} del ${formatDate(report.dateKey)}`"
-                @click="openReport(report)"
-                @keydown.enter.prevent="openReport(report)"
-                @keydown.space.prevent="openReport(report)"
               >
                 <td>
                   <strong>{{ formatDate(report.dateKey) }}</strong>
