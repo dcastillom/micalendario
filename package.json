@@ -1,6 +1,6 @@
 {
   "name": "micalendario",
-  "version": "0.1.0",
+  "version": "0.1.5",
   "private": true,
   "description": "Agenda-calendario de escritorio con Astro, Vue y Electron.",
   "author": "Mi Calendario",
