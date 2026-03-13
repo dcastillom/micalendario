@@ -1714,6 +1714,7 @@ button {
   }
 
   .reports-header__actions .ghost-link,
+  .reports-header__actions .ghost-button,
   .reports-header__actions .primary-button,
   .reports-filters__actions .ghost-button {
     width: 100%;

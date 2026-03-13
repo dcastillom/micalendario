@@ -41,6 +41,8 @@ const DEFAULT_FILTERS: FiltersState = {
 
 const loading = ref(true);
 const loadError = ref("");
+const exportError = ref("");
+const exporting = ref(false);
 const reports = ref<ReportListItem[]>([]);
 const asignadoOptions = ref<string[]>([]);
 const filters = ref<FiltersState>({ ...DEFAULT_FILTERS });
@@ -81,6 +83,16 @@ function formatPrintTimestamp(value: Date) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(value);
+}
+
+function formatExportTimestamp(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  const hours = String(value.getHours()).padStart(2, "0");
+  const minutes = String(value.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day}_${hours}-${minutes}`;
 }
 
 function getPlanoLabel(value: DayEntry["plano"]) {
@@ -283,6 +295,80 @@ function printResults() {
   window.print();
 }
 
+function buildExportRows() {
+  return filteredReports.value.map((report) => ({
+    Fecha: formatDate(report.dateKey),
+    Referencia: report.referencia || "",
+    Asignado: report.asignado || "",
+    Planos: getPlanoLabel(report.plano),
+    Localidad: report.localidad || "",
+    Observaciones: report.observaciones || "",
+    Entregado: getEntregadoLabel(report.entregado),
+  }));
+}
+
+async function exportResults() {
+  if (
+    typeof window === "undefined" ||
+    filteredReports.value.length === 0 ||
+    exporting.value
+  ) {
+    return;
+  }
+
+  exporting.value = true;
+  exportError.value = "";
+
+  try {
+    const xlsx = await import("xlsx");
+    const exportedAt = new Date();
+    const workbook = xlsx.utils.book_new();
+
+    const summarySheet = xlsx.utils.aoa_to_sheet([
+      ["Generado el", formatPrintTimestamp(exportedAt)],
+      ["Resultados", filteredReports.value.length],
+      [
+        "Filtros activos",
+        activeFilterTags.value.length > 0
+          ? activeFilterTags.value.join(" | ")
+          : "Sin filtros",
+      ],
+    ]);
+    summarySheet["!cols"] = [{ wch: 18 }, { wch: 80 }];
+
+    const dataSheet = xlsx.utils.json_to_sheet(buildExportRows());
+    dataSheet["!cols"] = [
+      { wch: 14 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 12 },
+      { wch: 20 },
+      { wch: 48 },
+      { wch: 12 },
+    ];
+
+    if (dataSheet["!ref"]) {
+      dataSheet["!autofilter"] = { ref: dataSheet["!ref"] };
+    }
+
+    xlsx.utils.book_append_sheet(workbook, summarySheet, "Resumen");
+    xlsx.utils.book_append_sheet(workbook, dataSheet, "Informes");
+
+    xlsx.writeFile(
+      workbook,
+      `informes-${formatExportTimestamp(exportedAt)}.xlsx`,
+      {
+        compression: true,
+      },
+    );
+  } catch (error) {
+    console.error(error);
+    exportError.value = "No se pudo exportar el listado a Excel.";
+  } finally {
+    exporting.value = false;
+  }
+}
+
 function getEditUrl(report: ReportListItem) {
   const params = new URLSearchParams({
     date: report.dateKey,
@@ -351,6 +437,7 @@ onMounted(() => {
 
 watch(filteredReports, () => {
   currentPage.value = 1;
+  exportError.value = "";
 });
 </script>
 
@@ -361,12 +448,20 @@ watch(filteredReports, () => {
         <div class="reports-header__copy">
           <p class="sidebar-copy">
             Filtra por cualquier campo del informe y genera un listado listo
-            para imprimir.
+            para imprimir o exportar a Excel.
           </p>
         </div>
 
         <div class="reports-header__actions">
           <a class="ghost-link" href="/">Volver a la agenda</a>
+          <button
+            class="ghost-button"
+            type="button"
+            :disabled="filteredReports.length === 0 || exporting"
+            @click="exportResults"
+          >
+            {{ exporting ? "Exportando..." : "Exportar Excel" }}
+          </button>
           <button
             class="primary-button"
             type="button"
@@ -377,6 +472,10 @@ watch(filteredReports, () => {
           </button>
         </div>
       </header>
+
+      <p v-if="exportError" class="reports-error no-print" aria-live="polite">
+        {{ exportError }}
+      </p>
 
       <section class="reports-filters no-print">
         <label class="field">
