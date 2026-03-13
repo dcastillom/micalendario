@@ -67,6 +67,9 @@ La restauracion reemplaza los datos actuales por los de la copia seleccionada.
 - `pnpm build`
 - `pnpm build:mac`
 - `pnpm build:win`
+- `pnpm release:patch`
+- `pnpm release:minor`
+- `pnpm release:major`
 
 ## Empaquetado
 
@@ -96,12 +99,14 @@ Hace esto:
 
 Como usarlo:
 
-1. Haz commit y push de la version que quieras publicar.
-2. Crea una etiqueta, por ejemplo:
-   `git tag v0.1.0`
-3. Sube la etiqueta:
-   `git push origin v0.1.0`
+1. Deja el repo limpio y en la rama que quieras publicar.
+2. Ejecuta `pnpm release:patch`, `pnpm release:minor` o `pnpm release:major`.
+3. El script toma la mayor version entre `package.json` y las tags locales `v*`, actualiza `package.json`, crea el commit `chore: release vX.Y.Z`, crea la etiqueta `vX.Y.Z` y hace push de la rama y de la etiqueta.
 4. GitHub Actions generara la release con los instalables adjuntos.
+
+Si quieres simular el siguiente numero sin tocar nada:
+
+- `pnpm release:next -- patch --dry-run`
 
 Secrets necesarios en GitHub Actions:
 
