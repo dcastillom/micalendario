@@ -25,6 +25,44 @@ function getContentType(filePath) {
   return MIME_TYPES[path.extname(filePath).toLowerCase()] || "application/octet-stream";
 }
 
+function resolveStaticFile(distRoot, pathname) {
+  const requestedPath = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+  const candidatePath = path.resolve(distRoot, requestedPath);
+
+  if (!candidatePath.startsWith(distRoot)) {
+    return path.join(distRoot, "index.html");
+  }
+
+  const possiblePaths = [candidatePath];
+
+  if (!path.extname(candidatePath)) {
+    possiblePaths.push(`${candidatePath}.html`);
+    possiblePaths.push(path.join(candidatePath, "index.html"));
+  }
+
+  for (const possiblePath of possiblePaths) {
+    if (!fs.existsSync(possiblePath)) {
+      continue;
+    }
+
+    const stats = fs.statSync(possiblePath);
+
+    if (stats.isFile()) {
+      return possiblePath;
+    }
+
+    if (stats.isDirectory()) {
+      const nestedIndexPath = path.join(possiblePath, "index.html");
+
+      if (fs.existsSync(nestedIndexPath) && fs.statSync(nestedIndexPath).isFile()) {
+        return nestedIndexPath;
+      }
+    }
+  }
+
+  return path.join(distRoot, "index.html");
+}
+
 async function startStaticServer() {
   if (staticServer) {
     const address = staticServer.address();
@@ -36,12 +74,7 @@ async function startStaticServer() {
   staticServer = http.createServer((request, response) => {
     const requestUrl = new URL(request.url || "/", "http://127.0.0.1");
     const pathname = decodeURIComponent(requestUrl.pathname);
-    const requestedPath = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
-    const candidatePath = path.resolve(distRoot, requestedPath);
-    const safePath = candidatePath.startsWith(distRoot) ? candidatePath : path.join(distRoot, "index.html");
-    const filePath = fs.existsSync(safePath) && fs.statSync(safePath).isFile()
-      ? safePath
-      : path.join(distRoot, "index.html");
+    const filePath = resolveStaticFile(distRoot, pathname);
 
     fs.readFile(filePath, (error, fileBuffer) => {
       if (error) {
