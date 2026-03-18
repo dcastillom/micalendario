@@ -2,6 +2,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const DEFAULT_ASIGNADO_OPTIONS = ["Bea", "Cris", "Gloria", "Alfredo", "Aída"];
+const DEFAULT_COMPANY_NAME = "";
+const DEFAULT_COMPANY_SUBTITLE = "";
+const DEFAULT_COMPANY_LOGO_DATA_URL = "";
 const BACKUP_FILE_PREFIX = "planner-backup-";
 const MAX_BACKUP_FILES = 30;
 
@@ -13,6 +16,20 @@ function sortAsignadoOptions(options) {
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function normalizeTextSetting(value) {
+  return String(value ?? "").trim();
+}
+
+function normalizeLogoDataUrl(value) {
+  const trimmedValue = String(value ?? "").trim();
+
+  if (!trimmedValue.startsWith("data:image/")) {
+    return "";
+  }
+
+  return trimmedValue;
 }
 
 class PlannerStore {
@@ -74,6 +91,15 @@ class PlannerStore {
                 ),
               ]
             : [...DEFAULT_ASIGNADO_OPTIONS],
+        ),
+        companyName: normalizeTextSetting(
+          data?.settings?.companyName ?? DEFAULT_COMPANY_NAME,
+        ),
+        companySubtitle: normalizeTextSetting(
+          data?.settings?.companySubtitle ?? DEFAULT_COMPANY_SUBTITLE,
+        ),
+        companyLogoDataUrl: normalizeLogoDataUrl(
+          data?.settings?.companyLogoDataUrl ?? DEFAULT_COMPANY_LOGO_DATA_URL,
         ),
       },
     };

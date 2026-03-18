@@ -15,6 +15,7 @@ import {
 import {
   createEmptyEntry,
   createEmptyDay,
+  createDefaultPlannerSettings,
   loadAllDays,
   loadDay,
   loadDaysForMonth,
@@ -24,9 +25,16 @@ import {
   selectDesktopBackup,
   saveDesktopBackup,
   saveDay,
-  saveSettings,
 } from "../lib/planner-client";
-import type { DayEntry, DayRecord } from "../lib/planner-types";
+import {
+  dispatchPlannerSettingsUpdated,
+  PLANNER_SETTINGS_UPDATED_EVENT,
+} from "../lib/planner-ui-events";
+import type {
+  DayEntry,
+  DayRecord,
+  PlannerSettings,
+} from "../lib/planner-types";
 
 const AUTO_BACKUP_INTERVAL_MS = 30 * 60 * 1000;
 const AUTO_BACKUP_DEBOUNCE_MS = 20 * 1000;
@@ -73,10 +81,8 @@ const suppressAutoSave = ref(false);
 const storageModeStatus = ref<StorageModeStatus>("checking");
 const monthRecords = ref<Record<string, DayRecord>>({});
 const allRecords = ref<Record<string, DayRecord>>({});
+const plannerSettings = ref<PlannerSettings>(createDefaultPlannerSettings());
 const asignadoOptions = ref<string[]>([]);
-const asignadoEditorOpen = ref(false);
-const newAsignadoOption = ref("");
-const asignadoOptionError = ref("");
 const referenceFilter = ref("");
 const canOpenBackupFolder = ref(false);
 const canRestoreBackup = ref(false);
@@ -277,16 +283,18 @@ const filteredReferenceResults = computed(() => {
     .sort((left, right) => right.dateKey.localeCompare(left.dateKey));
 });
 
-function normalizeAsignadoOption(value: string) {
-  return value.trim().toLocaleLowerCase("es-ES");
-}
-
 function getAsignadoSelectOptions(currentValue: string) {
   if (!currentValue || asignadoOptions.value.includes(currentValue)) {
     return asignadoOptions.value;
   }
 
   return [currentValue, ...asignadoOptions.value];
+}
+
+function applyPlannerSettings(settings: PlannerSettings) {
+  plannerSettings.value = settings;
+  asignadoOptions.value = settings.asignadoOptions;
+  dispatchPlannerSettingsUpdated(settings);
 }
 
 function cloneRecord(record: DayRecord): DayRecord {
@@ -345,20 +353,6 @@ async function persistDay() {
     await applyLoadedDayRecord(savedRecord);
     savingState.value = "saved";
     queueDesktopBackup("day-save");
-  } catch (error) {
-    console.error(error);
-    savingState.value = "error";
-  }
-}
-
-async function persistAsignadoOptions(nextOptions: string[]) {
-  savingState.value = "saving";
-
-  try {
-    const settings = await saveSettings({ asignadoOptions: nextOptions });
-    asignadoOptions.value = settings.asignadoOptions;
-    savingState.value = "saved";
-    queueDesktopBackup("settings-save");
   } catch (error) {
     console.error(error);
     savingState.value = "error";
@@ -556,12 +550,20 @@ async function restoreBackup() {
 async function loadAsignadoOptions() {
   try {
     const settings = await loadSettings();
-    asignadoOptions.value = settings.asignadoOptions;
+    applyPlannerSettings(settings);
   } catch (error) {
     console.error(error);
-    asignadoOptionError.value =
-      "No se pudieron cargar las opciones de asignado.";
   }
+}
+
+function handlePlannerSettingsUpdated(event: Event) {
+  if (!(event instanceof CustomEvent)) {
+    return;
+  }
+
+  const settings = event.detail as PlannerSettings;
+  plannerSettings.value = settings;
+  asignadoOptions.value = settings.asignadoOptions;
 }
 
 async function refreshStorageMode() {
@@ -598,7 +600,6 @@ function openMonthView() {
 }
 
 function openDayFromMonth(dateKey: string) {
-  asignadoEditorOpen.value = false;
   viewMode.value = "day";
 
   if (selectedDate.value === dateKey) {
@@ -701,6 +702,21 @@ function applyInitialNavigationState() {
   }
 
   pendingEntryId = entryParam;
+}
+
+async function flushPendingDaySave() {
+  if (!saveTimer) {
+    return;
+  }
+
+  window.clearTimeout(saveTimer);
+  saveTimer = undefined;
+
+  try {
+    await saveDay(dayRecord.value);
+  } catch (error) {
+    console.error("No se pudo guardar antes de cambiar de vista.", error);
+  }
 }
 
 function openRemoveDialog(entry: DayEntry) {
@@ -842,8 +858,7 @@ async function confirmMoveEntry() {
   } catch (error) {
     console.error("No se pudo mover el informe.", error);
     savingState.value = "error";
-    moveDialogError.value =
-      "No se pudo mover el informe al día seleccionado.";
+    moveDialogError.value = "No se pudo mover el informe al día seleccionado.";
   } finally {
     movingEntry.value = false;
   }
@@ -858,48 +873,6 @@ function handleWindowKeydown(event: KeyboardEvent) {
   if (event.key === "Escape" && removeDialog.value) {
     closeRemoveDialog();
   }
-}
-
-function toggleAsignadoEditor() {
-  asignadoEditorOpen.value = !asignadoEditorOpen.value;
-  asignadoOptionError.value = "";
-}
-
-async function addAsignadoOption() {
-  const nextOption = newAsignadoOption.value.trim();
-  const normalized = normalizeAsignadoOption(nextOption);
-
-  if (!nextOption) {
-    asignadoOptionError.value = "Escribe un nombre para la opcion.";
-    return;
-  }
-
-  if (
-    asignadoOptions.value.some(
-      (option) => normalizeAsignadoOption(option) === normalized,
-    )
-  ) {
-    asignadoOptionError.value = "Esa opcion ya existe.";
-    return;
-  }
-
-  asignadoOptionError.value = "";
-  newAsignadoOption.value = "";
-  await persistAsignadoOptions([...asignadoOptions.value, nextOption]);
-}
-
-async function removeAsignadoOption(optionToRemove: string) {
-  const nextOptions = asignadoOptions.value.filter(
-    (option) => option !== optionToRemove,
-  );
-
-  if (nextOptions.length === 0) {
-    asignadoOptionError.value = "Debe quedar al menos una opcion disponible.";
-    return;
-  }
-
-  asignadoOptionError.value = "";
-  await persistAsignadoOptions(nextOptions);
 }
 
 watch(selectedDate, (nextDate, previousDate) => {
@@ -930,6 +903,7 @@ watch(
 
 onMounted(() => {
   window.addEventListener("keydown", handleWindowKeydown);
+  window.addEventListener(PLANNER_SETTINGS_UPDATED_EVENT, handlePlannerSettingsUpdated);
   canOpenBackupFolder.value = Boolean(
     typeof window !== "undefined" && window.desktopPlanner?.openBackupFolder,
   );
@@ -954,9 +928,13 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleWindowKeydown);
+  window.removeEventListener(
+    PLANNER_SETTINGS_UPDATED_EVENT,
+    handlePlannerSettingsUpdated,
+  );
 
   if (saveTimer) {
-    window.clearTimeout(saveTimer);
+    void flushPendingDaySave();
   }
 
   if (backupTimer) {
@@ -1033,14 +1011,6 @@ onBeforeUnmount(() => {
           </span> -->
           <button
             v-if="viewMode === 'day'"
-            class="soft-button"
-            type="button"
-            @click="toggleAsignadoEditor"
-          >
-            {{ asignadoEditorOpen ? "Cerrar asignados" : "Editar asignados" }}
-          </button>
-          <button
-            v-if="viewMode === 'day'"
             class="primary-button"
             type="button"
             @click="addRow"
@@ -1101,57 +1071,6 @@ onBeforeUnmount(() => {
         <p v-else class="filter-panel__empty">
           No hay informes que coincidan con esa referencia.
         </p>
-      </section>
-
-      <section v-if="asignadoEditorOpen" class="pedido-editor">
-        <div class="pedido-editor__header">
-          <div>
-            <p class="pedido-editor__copy">
-              Añade o elimina las opciones que aparecerán en el dropdown de
-              asignado.
-            </p>
-          </div>
-        </div>
-
-        <div class="pedido-editor__form">
-          <label class="field">
-            <input
-              v-model="newAsignadoOption"
-              type="text"
-              placeholder="Nombre de la opcion"
-              @keydown.enter.prevent="addAsignadoOption"
-            />
-          </label>
-
-          <button
-            class="primary-button"
-            type="button"
-            @click="addAsignadoOption"
-          >
-            Añadir opción
-          </button>
-        </div>
-
-        <p v-if="asignadoOptionError" class="pedido-editor__error">
-          {{ asignadoOptionError }}
-        </p>
-
-        <div class="pedido-editor__list">
-          <article
-            v-for="asignadoOption in asignadoOptions"
-            :key="asignadoOption"
-            class="pedido-chip"
-          >
-            <span>{{ asignadoOption }}</span>
-            <button
-              class="pedido-chip__remove"
-              type="button"
-              @click="removeAsignadoOption(asignadoOption)"
-            >
-              Eliminar
-            </button>
-          </article>
-        </div>
       </section>
 
       <div v-if="isCurrentViewLoading" class="loading-state">

@@ -146,6 +146,31 @@ app.whenReady().then(async () => {
   ipcMain.handle("planner:get-settings", () => plannerStore.getSettings());
   ipcMain.handle("planner:save-settings", (_event, settings) => plannerStore.saveSettings(settings));
   ipcMain.handle("planner:save-backup", (_event, snapshot) => plannerStore.saveBackup(snapshot));
+  ipcMain.handle("planner:print-current-window", async (event) => {
+    const targetWindow = BrowserWindow.fromWebContents(event.sender);
+
+    if (!targetWindow) {
+      throw new Error("No se encontro una ventana disponible para imprimir.");
+    }
+
+    await new Promise((resolve, reject) => {
+      targetWindow.webContents.print(
+        {
+          printBackground: true
+        },
+        (success, failureReason) => {
+          if (!success) {
+            reject(new Error(failureReason || "No se pudo iniciar la impresion."));
+            return;
+          }
+
+          resolve();
+        }
+      );
+    });
+
+    return { success: true };
+  });
   ipcMain.handle("planner:open-backup-folder", async () => {
     const backupDir = plannerStore.getBackupDir();
     const errorMessage = await shell.openPath(backupDir);

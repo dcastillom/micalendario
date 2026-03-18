@@ -8,6 +8,9 @@ import {
 const STORAGE_KEY = "mi-calendario-days";
 const SETTINGS_KEY = "mi-calendario-settings";
 const DEFAULT_ASIGNADO_OPTIONS = ["Bea", "Cris", "Gloria", "Alfredo", "Aída"];
+const DEFAULT_COMPANY_NAME = "";
+const DEFAULT_COMPANY_SUBTITLE = "";
+const DEFAULT_COMPANY_LOGO_DATA_URL = "";
 const REMOTE_DAYS_TABLE = "planner_days";
 const REMOTE_SETTINGS_TABLE = "planner_settings";
 const REMOTE_SHARED_SETTINGS_ID = "shared";
@@ -103,8 +106,24 @@ function normalizeAsignadoOptions(options: string[]) {
       );
 }
 
+function normalizeTextSetting(value: string | null | undefined) {
+  return String(value ?? "").trim();
+}
+
+function normalizeLogoDataUrl(value: string | null | undefined) {
+  const trimmedValue = String(value ?? "").trim();
+
+  if (!trimmedValue.startsWith("data:image/")) {
+    return "";
+  }
+
+  return trimmedValue;
+}
+
 function normalizeSettings(
-  settings?: (PlannerSettings & { pedidoOptions?: string[] }) | null,
+  settings?:
+    | (Partial<PlannerSettings> & { pedidoOptions?: string[] })
+    | null,
 ): PlannerSettings {
   return {
     asignadoOptions: normalizeAsignadoOptions(
@@ -112,7 +131,18 @@ function normalizeSettings(
         settings?.pedidoOptions ??
         DEFAULT_ASIGNADO_OPTIONS,
     ),
+    companyName: normalizeTextSetting(settings?.companyName ?? DEFAULT_COMPANY_NAME),
+    companySubtitle: normalizeTextSetting(
+      settings?.companySubtitle ?? DEFAULT_COMPANY_SUBTITLE,
+    ),
+    companyLogoDataUrl: normalizeLogoDataUrl(
+      settings?.companyLogoDataUrl ?? DEFAULT_COMPANY_LOGO_DATA_URL,
+    ),
   };
+}
+
+export function createDefaultPlannerSettings(): PlannerSettings {
+  return normalizeSettings();
 }
 
 export function createEmptyDay(dateKey: string): DayRecord {
@@ -250,7 +280,7 @@ async function loadRemoteSettings() {
 
   const { data, error } = await supabase
     .from(REMOTE_SETTINGS_TABLE)
-    .select("asignado_options")
+    .select("asignado_options, company_name, company_subtitle, company_logo_data_url")
     .eq("id", REMOTE_SHARED_SETTINGS_ID)
     .maybeSingle();
 
@@ -264,6 +294,9 @@ async function loadRemoteSettings() {
           asignadoOptions: Array.isArray(data.asignado_options)
             ? data.asignado_options.map((value) => String(value))
             : [],
+          companyName: data.company_name ?? "",
+          companySubtitle: data.company_subtitle ?? "",
+          companyLogoDataUrl: data.company_logo_data_url ?? "",
         }
       : undefined,
   );
@@ -283,11 +316,14 @@ async function saveRemoteSettings(settings: PlannerSettings) {
       {
         id: REMOTE_SHARED_SETTINGS_ID,
         asignado_options: normalized.asignadoOptions,
+        company_name: normalized.companyName,
+        company_subtitle: normalized.companySubtitle,
+        company_logo_data_url: normalized.companyLogoDataUrl,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "id" },
     )
-    .select("asignado_options")
+    .select("asignado_options, company_name, company_subtitle, company_logo_data_url")
     .single();
 
   if (error) {
@@ -298,6 +334,9 @@ async function saveRemoteSettings(settings: PlannerSettings) {
     asignadoOptions: Array.isArray(data.asignado_options)
       ? data.asignado_options.map((value) => String(value))
       : [],
+    companyName: data.company_name ?? "",
+    companySubtitle: data.company_subtitle ?? "",
+    companyLogoDataUrl: data.company_logo_data_url ?? "",
   });
 }
 
@@ -338,6 +377,9 @@ async function replaceRemoteAllData(snapshot: PlannerBackupSnapshot) {
       {
         id: REMOTE_SHARED_SETTINGS_ID,
         asignado_options: normalized.settings.asignadoOptions,
+        company_name: normalized.settings.companyName,
+        company_subtitle: normalized.settings.companySubtitle,
+        company_logo_data_url: normalized.settings.companyLogoDataUrl,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "id" },
@@ -535,7 +577,6 @@ export async function saveSettings(
       return normalizeSettings(saved);
     } catch (error) {
       console.error("No se pudo guardar la configuracion en Supabase.", error);
-      throw error;
     }
   }
 

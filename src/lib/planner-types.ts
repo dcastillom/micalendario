@@ -20,4 +20,7 @@ export interface DayRecord {
 
 export interface PlannerSettings {
   asignadoOptions: string[];
+  companyName: string;
+  companySubtitle: string;
+  companyLogoDataUrl: string;
 }

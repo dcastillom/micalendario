@@ -1,7 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
-import { loadAllDays, loadSettings } from "../lib/planner-client";
-import type { DayEntry } from "../lib/planner-types";
+import { navigate } from "astro:transitions/client";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import * as xlsxModule from "xlsx";
+import CompanyHeader from "./CompanyHeader.vue";
+import {
+  createDefaultPlannerSettings,
+  loadAllDays,
+  loadSettings,
+} from "../lib/planner-client";
+import { PLANNER_SETTINGS_UPDATED_EVENT } from "../lib/planner-ui-events";
+import type { DayEntry, PlannerSettings } from "../lib/planner-types";
 
 type PlanoFilter = "" | "si" | "no" | "pendiente";
 type EntregadoFilter = "" | "si" | "no";
@@ -50,7 +58,7 @@ const DEFAULT_FILTERS: FiltersState = {
 };
 
 const DEFAULT_SORT_FIELD: SortField = "dateKey";
-const DEFAULT_SORT_DIRECTION: SortDirection = "desc";
+const DEFAULT_SORT_DIRECTION: SortDirection = "asc";
 
 const SORT_FIELD_OPTIONS: Array<{ value: SortField; label: string }> = [
   { value: "dateKey", label: "Fecha" },
@@ -67,6 +75,8 @@ const loadError = ref("");
 const exportError = ref("");
 const exporting = ref(false);
 const reports = ref<ReportListItem[]>([]);
+const plannerSettings = ref<PlannerSettings>(createDefaultPlannerSettings());
+const plannerSettingsReady = ref(false);
 const asignadoOptions = ref<string[]>([]);
 const filters = ref<FiltersState>({ ...DEFAULT_FILTERS });
 const sortField = ref<SortField>(DEFAULT_SORT_FIELD);
@@ -74,6 +84,8 @@ const sortDirection = ref<SortDirection>(DEFAULT_SORT_DIRECTION);
 const currentPage = ref(1);
 
 const REPORTS_PER_PAGE = 25;
+const XLSX_MIME_TYPE =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 function normalize(value: string) {
   return value
@@ -118,6 +130,31 @@ function formatExportTimestamp(value: Date) {
   const minutes = String(value.getMinutes()).padStart(2, "0");
 
   return `${year}-${month}-${day}_${hours}-${minutes}`;
+}
+
+function getXlsxModule() {
+  return xlsxModule;
+}
+
+function downloadExcelFile(fileName: string, workbookData: ArrayBuffer) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const blob = new Blob([workbookData], { type: XLSX_MIME_TYPE });
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = objectUrl;
+  link.download = fileName;
+  link.style.display = "none";
+  document.body.append(link);
+  link.click();
+  link.remove();
+
+  window.setTimeout(() => {
+    window.URL.revokeObjectURL(objectUrl);
+  }, 1000);
 }
 
 function compareText(left: string, right: string) {
@@ -201,14 +238,12 @@ function getEntregadoLabel(value: boolean) {
 
 function getSortFieldLabel(field: SortField) {
   return (
-    SORT_FIELD_OPTIONS.find((option) => option.value === field)?.label ?? "Fecha"
+    SORT_FIELD_OPTIONS.find((option) => option.value === field)?.label ??
+    "Fecha"
   );
 }
 
-function getSortDirectionLabel(
-  field: SortField,
-  direction: SortDirection,
-) {
+function getSortDirectionLabel(field: SortField, direction: SortDirection) {
   if (field === "dateKey") {
     return direction === "asc"
       ? "de más antigua a más reciente"
@@ -219,7 +254,7 @@ function getSortDirectionLabel(
 }
 
 function getDefaultSortDirection(field: SortField): SortDirection {
-  return field === "dateKey" ? "desc" : "asc";
+  return "asc";
 }
 
 function getReportFieldValue(report: ReportListItem, field: SortField) {
@@ -360,7 +395,9 @@ const filteredReports = computed(() => {
 
       if (
         normalizedFilters.value.referencia &&
-        !normalize(report.referencia).includes(normalizedFilters.value.referencia)
+        !normalize(report.referencia).includes(
+          normalizedFilters.value.referencia,
+        )
       ) {
         return false;
       }
@@ -488,8 +525,7 @@ const resultsSummaryLabel = computed(() => {
 const sortDirectionOptions = computed(() => [
   {
     value: "asc" as const,
-    label:
-      sortField.value === "dateKey" ? "Más antigua primero" : "Ascendente",
+    label: sortField.value === "dateKey" ? "Más antigua primero" : "Ascendente",
   },
   {
     value: "desc" as const,
@@ -517,9 +553,18 @@ function goToNextPage() {
   currentPage.value = Math.min(totalPages.value, currentPage.value + 1);
 }
 
-function printResults() {
+async function printResults() {
   if (typeof window === "undefined" || filteredReports.value.length === 0) {
     return;
+  }
+
+  if (window.desktopPlanner?.printCurrentWindow) {
+    try {
+      await window.desktopPlanner.printCurrentWindow();
+      return;
+    } catch (error) {
+      console.error("No se pudo abrir la impresion nativa.", error);
+    }
   }
 
   window.print();
@@ -550,7 +595,7 @@ async function exportResults() {
   exportError.value = "";
 
   try {
-    const xlsx = await import("xlsx");
+    const xlsx = getXlsxModule();
     const exportedAt = new Date();
     const workbook = xlsx.utils.book_new();
 
@@ -585,12 +630,15 @@ async function exportResults() {
     xlsx.utils.book_append_sheet(workbook, summarySheet, "Resumen");
     xlsx.utils.book_append_sheet(workbook, dataSheet, "Informes");
 
-    xlsx.writeFile(
-      workbook,
+    const workbookData = xlsx.write(workbook, {
+      bookType: "xlsx",
+      type: "array",
+      compression: true,
+    });
+
+    downloadExcelFile(
       `informes-${formatExportTimestamp(exportedAt)}.xlsx`,
-      {
-        compression: true,
-      },
+      workbookData,
     );
   } catch (error) {
     console.error(error);
@@ -614,7 +662,7 @@ function openReport(report: ReportListItem) {
     return;
   }
 
-  window.location.href = getEditUrl(report);
+  void navigate(getEditUrl(report));
 }
 
 function mapEntryToListItem(dateKey: string, entry: DayEntry): ReportListItem {
@@ -638,21 +686,44 @@ async function loadReports() {
   loadError.value = "";
 
   try {
-    const [days, settings] = await Promise.all([loadAllDays(), loadSettings()]);
+    const daysPromise = loadAllDays();
+    const settings = await loadSettings();
+    plannerSettings.value = settings;
+    plannerSettingsReady.value = true;
     asignadoOptions.value = settings.asignadoOptions;
+    const days = await daysPromise;
     reports.value = Object.values(days).flatMap((record) =>
       record.entries.map((entry) => mapEntryToListItem(record.dateKey, entry)),
     );
   } catch (error) {
     console.error(error);
     loadError.value = "No se pudieron cargar los informes guardados.";
+    plannerSettingsReady.value = true;
   } finally {
     loading.value = false;
   }
 }
 
+function handlePlannerSettingsUpdated(event: Event) {
+  if (!(event instanceof CustomEvent)) {
+    return;
+  }
+
+  const settings = event.detail as PlannerSettings;
+  plannerSettings.value = settings;
+  asignadoOptions.value = settings.asignadoOptions;
+}
+
 onMounted(() => {
+  window.addEventListener(PLANNER_SETTINGS_UPDATED_EVENT, handlePlannerSettingsUpdated);
   void loadReports();
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener(
+    PLANNER_SETTINGS_UPDATED_EVENT,
+    handlePlannerSettingsUpdated,
+  );
 });
 
 watch(filteredReports, () => {
@@ -665,12 +736,10 @@ watch(filteredReports, () => {
   <main class="reports-page">
     <section class="reports-sheet">
       <header class="reports-header no-print">
-        <div class="reports-header__copy">
-          <p class="sidebar-copy">
-            Filtra por cualquier campo del informe y genera un listado listo
-            para imprimir o exportar a Excel.
-          </p>
-        </div>
+        <p class="sidebar-copy reports-header__intro">
+          Filtra por cualquier campo del informe y genera un listado listo para
+          imprimir o exportar a Excel.
+        </p>
 
         <div class="reports-header__actions">
           <a class="ghost-link" href="/">Volver a la agenda</a>
@@ -805,7 +874,7 @@ watch(filteredReports, () => {
         {{ dateRangeError }}
       </p>
 
-      <section class="reports-summary">
+      <section class="reports-summary no-print">
         <div class="reports-summary__copy">
           <strong>{{ resultsSummaryLabel }}</strong>
           <span>
@@ -835,7 +904,13 @@ watch(filteredReports, () => {
         </div>
       </section>
 
-      <section class="reports-print-head only-print">
+      <section v-if="plannerSettingsReady" class="reports-print-head only-print">
+        <CompanyHeader
+          :settings="plannerSettings"
+          fallback-name="Mi Calendario"
+          fallback-subtitle=""
+          compact
+        />
         <p>Generado el {{ printTimestampLabel }}</p>
         <p>{{ resultsSummaryLabel }}</p>
         <p>{{ sortSummaryLabel }}</p>

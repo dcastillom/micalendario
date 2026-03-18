@@ -1,4 +1,6 @@
 ---
+import { ClientRouter } from "astro:transitions";
+import PersistentAppHeader from "../components/PersistentAppHeader.vue";
 import "../styles/global.css";
 
 interface Props {
@@ -15,8 +17,14 @@ const { title = "Mi Calendario" } = Astro.props;
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Agenda-calendario de escritorio para pedidos y entregas." />
     <title>{title}</title>
+    <ClientRouter />
   </head>
   <body>
+    <PersistentAppHeader
+      client:load
+      transition:persist="app-shell-header"
+      initial-pathname={Astro.url.pathname}
+    />
     <slot />
   </body>
 </html>
