@@ -86,6 +86,14 @@ const removeDialog = ref<{
   referencia: string;
   localidad: string;
 } | null>(null);
+const moveDialog = ref<{
+  id: string;
+  referencia: string;
+  localidad: string;
+  targetDate: string;
+} | null>(null);
+const moveDialogError = ref("");
+const movingEntry = ref(false);
 
 let saveTimer: number | undefined;
 let backupTimer: number | undefined;
@@ -707,6 +715,25 @@ function closeRemoveDialog() {
   removeDialog.value = null;
 }
 
+function openMoveDialog(entry: DayEntry) {
+  moveDialog.value = {
+    id: entry.id,
+    referencia: entry.referencia.trim() || "Sin referencia",
+    localidad: entry.localidad.trim() || "Sin localidad",
+    targetDate: selectedDate.value,
+  };
+  moveDialogError.value = "";
+}
+
+function closeMoveDialog(force = false) {
+  if (movingEntry.value && !force) {
+    return;
+  }
+
+  moveDialog.value = null;
+  moveDialogError.value = "";
+}
+
 async function addRow() {
   const entry = createEmptyEntry();
   dayRecord.value.entries.push(entry);
@@ -739,7 +766,95 @@ function confirmRemoveRow() {
   removeRow(removeDialog.value.id);
 }
 
+async function confirmMoveEntry() {
+  if (!moveDialog.value || movingEntry.value) {
+    return;
+  }
+
+  const targetDate = moveDialog.value.targetDate.trim();
+  const sourceDate = dayRecord.value.dateKey;
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
+    moveDialogError.value = "Selecciona una fecha válida.";
+    return;
+  }
+
+  if (targetDate === sourceDate) {
+    moveDialogError.value = "Elige un día distinto para mover el informe.";
+    return;
+  }
+
+  const entryToMove = dayRecord.value.entries.find(
+    (entry) => entry.id === moveDialog.value?.id,
+  );
+
+  if (!entryToMove) {
+    moveDialogError.value = "No se encontró el informe que quieres mover.";
+    return;
+  }
+
+  if (saveTimer) {
+    window.clearTimeout(saveTimer);
+    saveTimer = undefined;
+  }
+
+  movingEntry.value = true;
+  moveDialogError.value = "";
+  savingState.value = "saving";
+
+  const sourceRecordWithoutEntry = cloneRecord(dayRecord.value);
+  sourceRecordWithoutEntry.entries = sourceRecordWithoutEntry.entries.filter(
+    (entry) => entry.id !== entryToMove.id,
+  );
+
+  try {
+    const targetOriginalRecord = cloneRecord(await loadDay(targetDate));
+    const targetRecordWithEntry = cloneRecord(targetOriginalRecord);
+    targetRecordWithEntry.entries.push({ ...entryToMove });
+
+    const savedTargetRecord = await saveDay(targetRecordWithEntry);
+
+    try {
+      const savedSourceRecord = await saveDay(sourceRecordWithoutEntry);
+
+      syncMonthRecord(savedTargetRecord);
+      syncAllRecordsRecord(savedTargetRecord);
+      await applyLoadedDayRecord(savedSourceRecord);
+      closeMoveDialog(true);
+      savingState.value = "saved";
+      queueDesktopBackup("entry-move");
+    } catch (error) {
+      console.error("No se pudo guardar el dia de origen tras mover.", error);
+
+      try {
+        const restoredTargetRecord = await saveDay(targetOriginalRecord);
+        syncMonthRecord(restoredTargetRecord);
+        syncAllRecordsRecord(restoredTargetRecord);
+      } catch (rollbackError) {
+        console.error(
+          "No se pudo revertir el dia de destino tras un error al mover.",
+          rollbackError,
+        );
+      }
+
+      throw error;
+    }
+  } catch (error) {
+    console.error("No se pudo mover el informe.", error);
+    savingState.value = "error";
+    moveDialogError.value =
+      "No se pudo mover el informe al día seleccionado.";
+  } finally {
+    movingEntry.value = false;
+  }
+}
+
 function handleWindowKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape" && moveDialog.value) {
+    closeMoveDialog();
+    return;
+  }
+
   if (event.key === "Escape" && removeDialog.value) {
     closeRemoveDialog();
   }
@@ -1160,13 +1275,22 @@ onBeforeUnmount(() => {
               <div class="row-status">
                 <strong>{{ entry.referencia || "Sin referencia" }}</strong>
               </div>
-              <button
-                class="inline-remove"
-                type="button"
-                @click="openRemoveDialog(entry)"
-              >
-                Eliminar
-              </button>
+              <div class="row-topbar__actions">
+                <button
+                  class="soft-button row-topbar__action"
+                  type="button"
+                  @click="openMoveDialog(entry)"
+                >
+                  Mover
+                </button>
+                <button
+                  class="inline-remove"
+                  type="button"
+                  @click="openRemoveDialog(entry)"
+                >
+                  Eliminar
+                </button>
+              </div>
             </div>
 
             <div class="sheet-grid sheet-grid--body">
@@ -1277,6 +1401,63 @@ onBeforeUnmount(() => {
           </button>
           <button class="inline-remove" type="button" @click="confirmRemoveRow">
             Eliminar
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div
+      v-if="moveDialog"
+      class="confirm-overlay"
+      @click.self="closeMoveDialog"
+    >
+      <section
+        class="confirm-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="move-dialog-title"
+      >
+        <h2 id="move-dialog-title">Mover informe a otro día</h2>
+        <dl class="confirm-dialog__details">
+          <div>
+            <dt>Referencia:</dt>
+            <dd>{{ moveDialog.referencia }}</dd>
+          </div>
+          <div>
+            <dt>Localidad:</dt>
+            <dd>{{ moveDialog.localidad }}</dd>
+          </div>
+          <div>
+            <dt>Día actual:</dt>
+            <dd>{{ formatHeader(selectedDate) }}</dd>
+          </div>
+        </dl>
+
+        <label class="field">
+          <span class="field-label">Nuevo día:</span>
+          <input v-model="moveDialog.targetDate" type="date" />
+        </label>
+
+        <p v-if="moveDialogError" class="pedido-editor__error">
+          {{ moveDialogError }}
+        </p>
+
+        <div class="confirm-dialog__actions">
+          <button
+            class="ghost-button"
+            type="button"
+            :disabled="movingEntry"
+            @click="closeMoveDialog"
+          >
+            Cancelar
+          </button>
+          <button
+            class="soft-button"
+            type="button"
+            :disabled="movingEntry"
+            @click="confirmMoveEntry"
+          >
+            {{ movingEntry ? "Moviendo..." : "Mover informe" }}
           </button>
         </div>
       </section>

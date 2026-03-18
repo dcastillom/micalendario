@@ -1138,6 +1138,17 @@ button {
   gap: 12px;
 }
 
+.row-topbar__actions {
+  display: flex;
+  justify-self: end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.row-topbar__action {
+  padding-inline: 14px;
+}
+
 .row-status {
   display: grid;
   gap: 2px;
@@ -1694,6 +1705,10 @@ button {
     align-items: start;
   }
 
+  .row-topbar__actions {
+    justify-self: stretch;
+  }
+
   .reports-page {
     padding: 0;
   }
@@ -1848,7 +1863,8 @@ button {
   }
 
   .confirm-dialog__actions .ghost-button,
-  .confirm-dialog__actions .inline-remove {
+  .confirm-dialog__actions .inline-remove,
+  .confirm-dialog__actions .soft-button {
     width: 100%;
   }
 }
