@@ -482,6 +482,19 @@ button {
   max-width: 220px;
 }
 
+.toolbar-search--month {
+  display: grid;
+  grid-template-columns: minmax(180px, 220px) auto;
+  gap: 10px;
+  align-items: end;
+  max-width: none;
+}
+
+.toolbar-search--month .month-summary__search {
+  justify-self: stretch;
+  width: 100%;
+}
+
 .sheet-toolbar--day .sheet-actions {
   grid-column: 4;
 }
@@ -1784,6 +1797,11 @@ button {
     width: min(100%, 220px);
   }
 
+  .toolbar-search--month {
+    grid-template-columns: minmax(0, 1fr) auto;
+    width: 100%;
+  }
+
   .toolbar-group--navigation .ghost-button,
   .view-switch .ghost-button {
     min-width: 0;
@@ -1893,11 +1911,6 @@ button {
     font-size: 0.7rem;
   }
 
-  .view-switch .month-summary__search {
-    width: 100%;
-    min-width: 0;
-  }
-
   .sheet-toolbar,
   .sheet-toolbar--day,
   .sheet-toolbar--month {
@@ -1932,11 +1945,35 @@ button {
     justify-self: stretch;
   }
 
+  .toolbar-search--month {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar-search--month .month-summary__search {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+
   .sheet-actions {
     display: grid;
     grid-template-columns: auto repeat(2, minmax(0, max-content));
     justify-content: start;
     justify-self: stretch;
+  }
+
+  .sheet-toolbar--month .sheet-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    justify-content: stretch;
+  }
+
+  .sheet-toolbar--month .sheet-actions .ghost-link {
+    width: 100%;
+  }
+
+  .toolbar-search--month .ghost-link {
+    width: 100%;
   }
 
   .save-pill {
@@ -2049,11 +2086,22 @@ button {
   }
 
   .sheet-actions {
+    display: grid;
     grid-template-columns: 1fr;
+    justify-content: stretch;
   }
 
   .sheet-actions {
     justify-self: stretch;
+  }
+
+  .sheet-toolbar--month .sheet-actions {
+    display: grid;
+  }
+
+  .sheet-actions .ghost-link,
+  .sheet-actions .primary-button {
+    width: 100%;
   }
 
   .pedido-editor__form {

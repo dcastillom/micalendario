@@ -1000,7 +1000,7 @@ onBeforeUnmount(() => {
           </label>
         </div>
 
-        <div v-if="viewMode === 'month'" class="toolbar-search">
+        <div v-if="viewMode === 'month'" class="toolbar-search toolbar-search--month">
           <label class="field month-summary__search">
             <input
               v-model="referenceFilter"
@@ -1008,9 +1008,10 @@ onBeforeUnmount(() => {
               placeholder="Busca por referencia"
             />
           </label>
+          <a class="ghost-link" href="/filtros">Filtros</a>
         </div>
 
-        <div class="sheet-actions">
+        <div v-else class="sheet-actions">
           <a class="ghost-link" href="/filtros">Filtros</a>
           <!-- <span class="save-pill" :data-state="savingState">
             {{ savingStateLabel }}
