@@ -70,11 +70,11 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   min-height: 100vh;
-  padding: 0 24px 24px;
+  /* padding: 0 24px 24px; */
 }
 
 .app-shell-header {
-  padding: 24px 24px 18px;
+  padding: 0;
 }
 
 .app-shell-header__inner {
@@ -84,8 +84,16 @@ button {
 }
 
 .app-shell-header--reports .app-shell-header__inner {
-  width: min(1520px, 100%);
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
+}
+
+.app-shell-header--editing {
+  padding-bottom: 0;
+}
+
+.app-shell-header--editing .app-shell-header__inner {
+  gap: 0;
 }
 
 .sidebar-card,
@@ -240,7 +248,7 @@ button {
   align-items: center;
   padding: 20px 24px;
   border: 1px solid rgba(255, 255, 255, 0.42);
-  border-radius: 28px;
+  border-radius: 0;
   background: linear-gradient(
     180deg,
     rgba(255, 255, 255, 0.76),
@@ -252,7 +260,7 @@ button {
 .company-header--compact {
   gap: 14px;
   padding: 14px 18px;
-  border-radius: 22px;
+  border-radius: 0;
 }
 
 .company-header__logo {
@@ -334,6 +342,12 @@ button {
   gap: 8px;
 }
 
+.company-header__actions-stack {
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+}
+
 .company-header__name {
   display: block;
   margin: 0;
@@ -383,6 +397,20 @@ button {
   color: var(--ink);
 }
 
+.company-header__action-button--filters {
+  background: rgba(31, 107, 90, 0.12);
+  color: var(--accent-strong);
+  box-shadow:
+    inset 0 0 0 1px rgba(31, 107, 90, 0.24),
+    0 8px 18px rgba(31, 107, 90, 0.1);
+  font-weight: 800;
+}
+
+.company-header__action-button--filters:hover {
+  background: rgba(31, 107, 90, 0.18);
+  color: var(--accent-strong);
+}
+
 .company-header__action-button:focus {
   outline: none;
 }
@@ -391,6 +419,28 @@ button {
   box-shadow:
     inset 0 0 0 1px rgba(31, 107, 90, 0.22),
     0 0 0 4px rgba(31, 107, 90, 0.1);
+}
+
+.app-shell-header--editing .company-header,
+.app-shell-header--editing .brand-editor,
+.app-shell-header--editing .pedido-editor {
+  border-radius: 0;
+}
+
+.app-shell-header--editing .company-header__logo {
+  border-radius: 0;
+}
+
+.app-shell-header--editing .brand-editor,
+.app-shell-header--editing .pedido-editor {
+  /* gap: 0;
+  margin-top: -1px; */
+}
+
+.app-shell-header--editing .brand-editor__grid,
+.app-shell-header--editing .brand-editor__actions,
+.app-shell-header--editing .pedido-editor__form {
+  /* gap: 0; */
 }
 
 .sheet-header {
@@ -407,42 +457,42 @@ button {
 
 .sheet-toolbar {
   display: grid;
+  grid-template-columns: max-content max-content minmax(0, 1fr) 220px;
   gap: 14px;
   align-items: end;
-  padding: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.45);
+  /* padding: 18px; */
+  /* border: 1px solid rgba(255, 255, 255, 0.45);
   border-radius: 24px;
   background: linear-gradient(
     180deg,
     rgba(255, 255, 255, 0.52),
     rgba(246, 239, 231, 0.82)
   );
-  box-shadow: var(--shadow-soft);
+  box-shadow: var(--shadow-soft); */
 }
 
 .sheet-toolbar--day {
-  grid-template-columns: auto minmax(320px, 1fr) 220px auto;
+  grid-template-columns: max-content max-content minmax(0, 1fr) 220px;
 }
 
 .sheet-toolbar--month {
-  grid-template-columns:
-    auto
-    minmax(320px, 1fr)
-    220px
-    minmax(180px, 220px)
-    auto;
+  grid-template-columns: max-content max-content minmax(0, 1fr) 220px;
 }
 
 .view-switch {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 172px));
   gap: 10px;
   align-items: end;
   grid-column: 1;
+  justify-self: start;
 }
 
 .view-switch .ghost-button {
-  min-width: 154px;
+  min-width: 0;
+  width: 100%;
   white-space: nowrap;
+  justify-content: center;
 }
 
 .view-switch .ghost-button.is-active {
@@ -458,8 +508,10 @@ button {
 }
 
 .toolbar-group--navigation .ghost-button {
-  flex: 1;
+  min-width: 0;
+  width: 100%;
   white-space: nowrap;
+  justify-content: center;
 }
 
 .toolbar-group--navigation .ghost-button.is-today {
@@ -468,39 +520,34 @@ button {
 
 .toolbar-group--navigation {
   grid-column: 2;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 172px));
+  gap: 10px;
+  justify-self: start;
+  min-width: 0;
+}
+
+.toolbar-group--search {
+  grid-column: 3;
+  justify-self: end;
+  width: min(100%, 340px);
+  min-width: 0;
+}
+
+.toolbar-search {
+  width: 100%;
+  min-width: 0;
 }
 
 .toolbar-group--date {
   display: block;
-  grid-column: 3;
-}
-
-.toolbar-search {
   grid-column: 4;
-  justify-self: end;
-  width: 100%;
-  max-width: 220px;
-}
-
-.toolbar-search--month {
-  display: grid;
-  grid-template-columns: minmax(180px, 220px) auto;
-  gap: 10px;
-  align-items: end;
-  max-width: none;
-}
-
-.toolbar-search--month .month-summary__search {
-  justify-self: stretch;
   width: 100%;
 }
 
 .sheet-toolbar--day .sheet-actions {
-  grid-column: 4;
-}
-
-.sheet-toolbar--month .sheet-actions {
-  grid-column: 5;
+  grid-column: 3;
+  justify-self: end;
 }
 
 .date-field,
@@ -618,6 +665,15 @@ button {
   opacity: 0.96;
 }
 
+.ghost-button:disabled,
+.soft-button:disabled,
+.primary-button:disabled,
+.inline-remove:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+  box-shadow: inset 0 0 0 1px rgba(46, 64, 55, 0.06);
+}
+
 .ghost-button:focus,
 .soft-button:focus,
 .primary-button:focus,
@@ -667,6 +723,11 @@ button {
   gap: 10px;
   flex-wrap: nowrap;
   justify-self: end;
+}
+
+.sheet-toolbar--search-active .toolbar-group--navigation,
+.sheet-toolbar--search-active .toolbar-group--date {
+  opacity: 0.72;
 }
 
 .save-pill {
@@ -908,10 +969,34 @@ button {
   min-width: 0;
 }
 
+.month-summary__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.month-summary__action {
+  flex: 0 0 auto;
+}
+
+.month-summary__tools {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 0;
+}
+
 .month-summary__search {
-  justify-self: end;
+  justify-self: stretch;
   width: 100%;
-  max-width: 220px;
+  min-width: 280px;
+  max-width: none;
+}
+
+.month-summary__link {
+  flex: 0 0 auto;
 }
 
 .month-summary__copy {
@@ -1446,15 +1531,13 @@ button {
 .reports-page {
   display: grid;
   min-height: 100vh;
-  padding: 0 24px 24px;
+  /* padding: 0 24px 24px; */
 }
 
 .reports-sheet {
   display: grid;
   align-content: start;
   gap: 18px;
-  width: min(1520px, 100%);
-  margin: 0 auto;
   padding: 24px;
   border: 1px solid rgba(255, 255, 255, 0.42);
   background: linear-gradient(
@@ -1748,13 +1831,9 @@ button {
     font-size: clamp(2.1rem, 3.8vw, 3.7rem);
   }
 
-  .sheet-toolbar--day {
-    grid-template-columns: minmax(0, 1fr);
-    align-items: stretch;
-  }
-
+  .sheet-toolbar--day,
   .sheet-toolbar--month {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) minmax(240px, 320px) 220px;
     align-items: center;
   }
 
@@ -1763,43 +1842,25 @@ button {
     justify-self: start;
   }
 
-  .sheet-toolbar--month .sheet-actions {
-    grid-column: 2;
-    justify-self: end;
-    justify-content: flex-end;
-  }
-
-  .sheet-toolbar--day .sheet-actions {
-    grid-column: 1;
-    justify-self: start;
-    justify-content: flex-start;
-  }
-
   .toolbar-group--navigation {
     grid-column: 1 / -1;
+    grid-row: 2;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     align-items: stretch;
   }
 
-  .toolbar-group--date {
-    grid-column: 1;
-    max-width: 260px;
-  }
-
-  .sheet-toolbar--day .toolbar-group--date {
-    max-width: none;
-    width: 100%;
-  }
-
-  .toolbar-search {
+  .toolbar-group--search {
     grid-column: 2;
-    width: min(100%, 220px);
+    grid-row: 1;
+    width: 100%;
   }
 
-  .toolbar-search--month {
-    grid-template-columns: minmax(0, 1fr) auto;
-    width: 100%;
+  .toolbar-group--date {
+    grid-column: 3;
+    grid-row: 1;
+    width: 220px;
+    max-width: 220px;
   }
 
   .toolbar-group--navigation .ghost-button,
@@ -1851,6 +1912,27 @@ button {
 }
 
 @media (max-width: 1080px) {
+  .company-header__actions-stack {
+    justify-items: start;
+  }
+
+  .company-header__agenda-tools {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .company-header__agenda-search {
+    width: 100%;
+  }
+
+  .month-summary__tools {
+    width: 100%;
+  }
+
+  .month-summary__search {
+    min-width: 0;
+  }
+
   .company-header {
     gap: 16px;
     padding: 18px 20px;
@@ -1920,10 +2002,11 @@ button {
 
   .view-switch,
   .toolbar-group--navigation,
+  .toolbar-group--search,
   .toolbar-group--date,
-  .toolbar-search,
   .sheet-actions {
     grid-column: 1;
+    grid-row: auto;
     width: 100%;
     max-width: none;
   }
@@ -1937,21 +2020,11 @@ button {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .toolbar-group--date {
-    max-width: none;
-  }
-
-  .toolbar-search {
+  .toolbar-group--search {
     justify-self: stretch;
   }
 
-  .toolbar-search--month {
-    grid-template-columns: 1fr;
-  }
-
-  .toolbar-search--month .month-summary__search {
-    width: 100%;
-    min-width: 0;
+  .toolbar-group--date {
     max-width: none;
   }
 
@@ -1960,20 +2033,6 @@ button {
     grid-template-columns: auto repeat(2, minmax(0, max-content));
     justify-content: start;
     justify-self: stretch;
-  }
-
-  .sheet-toolbar--month .sheet-actions {
-    display: grid;
-    grid-template-columns: 1fr;
-    justify-content: stretch;
-  }
-
-  .sheet-toolbar--month .sheet-actions .ghost-link {
-    width: 100%;
-  }
-
-  .toolbar-search--month .ghost-link {
-    width: 100%;
   }
 
   .save-pill {
@@ -1993,7 +2052,7 @@ button {
   }
 
   .reports-page {
-    padding: 0 24px 24px;
+    /* padding: 0 24px 24px; */
   }
 
   .reports-filters {
@@ -2025,11 +2084,11 @@ button {
 @media (max-width: 820px) {
   .planner-app,
   .reports-page {
-    padding: 0 18px 18px;
+    /* padding: 0 18px 18px; */
   }
 
   .app-shell-header {
-    padding: 18px 18px 16px;
+    padding: 0;
   }
 
   .planner-sheet,
@@ -2040,7 +2099,7 @@ button {
   .company-header {
     gap: 14px;
     padding: 16px 18px;
-    border-radius: 24px;
+    border-radius: 0;
   }
 
   .company-header__logo {
@@ -2093,10 +2152,6 @@ button {
 
   .sheet-actions {
     justify-self: stretch;
-  }
-
-  .sheet-toolbar--month .sheet-actions {
-    display: grid;
   }
 
   .sheet-actions .ghost-link,
@@ -2188,6 +2243,24 @@ button {
     font-size: clamp(1.3rem, 6vw, 1.75rem);
   }
 
+  .month-summary__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .month-summary__tools {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .month-summary__action {
+    width: 100%;
+  }
+
+  .month-summary__link {
+    width: 100%;
+  }
+
   .empty-day {
     padding: 24px;
   }
@@ -2215,11 +2288,11 @@ button {
 @media (max-width: 640px) {
   .planner-app,
   .reports-page {
-    padding: 0 14px 14px;
+    /* padding: 0 14px 14px; */
   }
 
   .app-shell-header {
-    padding: 14px 14px 14px;
+    padding: 0;
   }
 
   .planner-sheet {
@@ -2230,7 +2303,7 @@ button {
   .company-header {
     gap: 12px;
     padding: 14px 16px;
-    border-radius: 22px;
+    border-radius: 0;
   }
 
   .company-header__logo {
@@ -2251,7 +2324,7 @@ button {
   }
 
   .reports-page {
-    padding: 0 14px 14px;
+    /* padding: 0 14px 14px; */
   }
 
   .reports-sheet,

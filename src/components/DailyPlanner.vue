@@ -252,6 +252,9 @@ const storageCaption = computed(() => {
 const normalizedReferenceFilter = computed(() =>
   referenceFilter.value.trim().toLocaleLowerCase("es-ES"),
 );
+const hasReferenceSearch = computed(
+  () => normalizedReferenceFilter.value.length > 0,
+);
 const filteredReferenceResults = computed(() => {
   if (!normalizedReferenceFilter.value) {
     return [];
@@ -595,6 +598,11 @@ function jumpToToday() {
   selectedDate.value = todayKey();
 }
 
+function openDayView() {
+  referenceFilter.value = "";
+  viewMode.value = "day";
+}
+
 function openMonthView() {
   viewMode.value = "month";
   referenceFilter.value = "";
@@ -609,6 +617,11 @@ function openDayFromMonth(dateKey: string) {
   }
 
   selectedDate.value = dateKey;
+}
+
+function openDayFromReferenceResult(dateKey: string) {
+  referenceFilter.value = "";
+  openDayFromMonth(dateKey);
 }
 
 function summarizeDay(record: DayRecord | null) {
@@ -904,7 +917,10 @@ watch(
 
 onMounted(() => {
   window.addEventListener("keydown", handleWindowKeydown);
-  window.addEventListener(PLANNER_SETTINGS_UPDATED_EVENT, handlePlannerSettingsUpdated);
+  window.addEventListener(
+    PLANNER_SETTINGS_UPDATED_EVENT,
+    handlePlannerSettingsUpdated,
+  );
   canOpenBackupFolder.value = Boolean(
     typeof window !== "undefined" && window.desktopPlanner?.openBackupFolder,
   );
@@ -956,6 +972,7 @@ onBeforeUnmount(() => {
         :class="{
           'sheet-toolbar--day': viewMode === 'day',
           'sheet-toolbar--month': viewMode === 'month',
+          'sheet-toolbar--search-active': hasReferenceSearch,
         }"
       >
         <div class="view-switch">
@@ -963,7 +980,7 @@ onBeforeUnmount(() => {
             class="ghost-button"
             :class="{ 'is-active': viewMode === 'day' }"
             type="button"
-            @click="viewMode = 'day'"
+            @click="openDayView"
           >
             Vista diaria
           </button>
@@ -978,78 +995,84 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="toolbar-group toolbar-group--navigation">
-          <button class="ghost-button" type="button" @click="shiftDay(-1)">
+          <button
+            class="ghost-button"
+            :disabled="hasReferenceSearch"
+            type="button"
+            @click="shiftDay(-1)"
+          >
             {{ viewMode === "day" ? "Día anterior" : "Mes anterior" }}
           </button>
           <button
             class="ghost-button"
             :class="{ 'is-today': isTodaySelected }"
+            :disabled="hasReferenceSearch"
             type="button"
             @click="jumpToToday"
           >
             Hoy
           </button>
-          <button class="ghost-button" type="button" @click="shiftDay(1)">
+          <button
+            class="ghost-button"
+            :disabled="hasReferenceSearch"
+            type="button"
+            @click="shiftDay(1)"
+          >
             {{ viewMode === "day" ? "Día siguiente" : "Mes siguiente" }}
           </button>
         </div>
 
-        <div class="toolbar-group toolbar-group--date">
-          <label class="date-field">
-            <input v-model="selectedDate" type="date" />
-          </label>
-        </div>
-
-        <div v-if="viewMode === 'month'" class="toolbar-search toolbar-search--month">
-          <label class="field month-summary__search">
+        <div class="toolbar-group toolbar-group--search">
+          <label class="field toolbar-search">
             <input
               v-model="referenceFilter"
               type="text"
               placeholder="Busca por referencia"
             />
           </label>
-          <a class="ghost-link" href="/filtros">Filtros</a>
         </div>
 
-        <div v-else class="sheet-actions">
-          <a class="ghost-link" href="/filtros">Filtros</a>
-          <!-- <span class="save-pill" :data-state="savingState">
-            {{ savingStateLabel }}
-          </span> -->
-          <button
-            v-if="viewMode === 'day'"
-            class="primary-button"
-            type="button"
-            @click="addRow"
-          >
-            Añadir informe
-          </button>
+        <div class="toolbar-group toolbar-group--date">
+          <label class="date-field">
+            <input v-model="selectedDate" :disabled="hasReferenceSearch" type="date" />
+          </label>
         </div>
       </section>
 
       <section
         v-if="viewMode === 'month' && normalizedReferenceFilter.length === 0"
-        class="month-summary"
+        class="month-summary month-summary--month"
       >
-        <div class="month-summary__heading">
+        <div class="month-summary__header">
           <h3>{{ formattedMonthTitle }}</h3>
         </div>
       </section>
-      <section v-else-if="viewMode === 'day'" class="month-summary">
-        <h3>{{ formattedTitle }}</h3>
+      <section
+        v-else-if="viewMode === 'day' && normalizedReferenceFilter.length === 0"
+        class="month-summary month-summary--day"
+      >
+        <div class="month-summary__header">
+          <h3>{{ formattedTitle }}</h3>
+          <div class="month-summary__tools month-summary__tools--day">
+            <button
+              class="primary-button month-summary__action"
+              type="button"
+              @click="addRow"
+            >
+              Añadir informe
+            </button>
+          </div>
+        </div>
       </section>
 
-      <section
-        v-if="viewMode === 'month' && normalizedReferenceFilter.length"
-        class="filter-panel"
-      >
+      <section v-if="normalizedReferenceFilter.length" class="filter-panel">
         <div v-if="filteredReferenceResults.length" class="filter-results">
           <button
             v-for="result in filteredReferenceResults"
             :key="`${result.dateKey}-${result.id}`"
             class="filter-result"
             type="button"
-            @click="openDayFromMonth(result.dateKey)"
+            @click="openDayFromReferenceResult(result.dateKey)"
           >
             <div class="filter-result__topbar">
               <strong>{{ formatHeader(result.dateKey) }}</strong>
@@ -1189,7 +1212,7 @@ onBeforeUnmount(() => {
           </button>
         </div>
 
-        <div v-else class="sheet-table">
+        <div v-else-if="normalizedReferenceFilter.length === 0" class="sheet-table">
           <article
             v-for="(entry, index) in dayRecord.entries"
             :key="entry.id"

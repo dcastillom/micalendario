@@ -67,6 +67,8 @@ const asignadoButtonLabel = computed(() =>
 );
 const headerClassName = computed(() => ({
   "app-shell-header--reports": isReportsRoute.value,
+  "app-shell-header--editing":
+    brandEditorOpen.value || asignadoEditorOpen.value,
 }));
 
 function syncBrandForm(settings: PlannerSettings) {
@@ -330,21 +332,30 @@ onBeforeUnmount(() => {
         logo-click-href="/"
       >
         <template v-if="canEditBranding" #actions>
-          <div class="company-header__button-group">
-            <button
-              class="company-header__action-button"
-              type="button"
-              @click="handleAsignadoButtonClick"
-            >
-              {{ asignadoButtonLabel }}
-            </button>
-            <button
-              class="company-header__action-button"
-              type="button"
-              @click="handleBrandButtonClick"
-            >
-              {{ brandButtonLabel }}
-            </button>
+          <div class="company-header__actions-stack">
+            <div class="company-header__button-group">
+              <button
+                class="company-header__action-button"
+                type="button"
+                @click="handleAsignadoButtonClick"
+              >
+                {{ asignadoButtonLabel }}
+              </button>
+              <button
+                class="company-header__action-button"
+                type="button"
+                @click="handleBrandButtonClick"
+              >
+                {{ brandButtonLabel }}
+              </button>
+              <a
+                v-if="isAgendaRoute"
+                class="ghost-link company-header__action-button company-header__action-button--filters"
+                href="/filtros"
+              >
+                Filtros
+              </a>
+            </div>
           </div>
         </template>
       </CompanyHeader>
