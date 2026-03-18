@@ -60,7 +60,7 @@ const displayedSettings = computed<PlannerSettings>(() =>
     : plannerSettings.value,
 );
 const brandButtonLabel = computed(() =>
-  brandEditorOpen.value ? "Cerrar editor" : "Editar cabecera",
+  brandEditorOpen.value ? "Cerrar cabecera" : "Editar cabecera",
 );
 const asignadoButtonLabel = computed(() =>
   asignadoEditorOpen.value ? "Cerrar asignados" : "Editar asignados",
@@ -73,9 +73,7 @@ const contextualHeaderActionLabel = computed(() =>
 );
 const contextualHeaderIconPaths = computed(() =>
   isReportsRoute.value
-    ? [
-        "M4 10.5 12 4l8 6.5v8.5a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z",
-      ]
+    ? ["M4 10.5 12 4l8 6.5v8.5a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"]
     : [
         "M7 8V4.5A1.5 1.5 0 0 1 8.5 3h7A1.5 1.5 0 0 1 17 4.5V8",
         "M6.5 19H17.5A1.5 1.5 0 0 0 19 17.5V11a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6.5A1.5 1.5 0 0 0 6.5 19Z",
