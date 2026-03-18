@@ -7,6 +7,7 @@ import {
   ref,
   watch,
 } from "vue";
+import AuthAccessCard from "./AuthAccessCard.vue";
 import LocalityAutocomplete from "./LocalityAutocomplete.vue";
 import {
   detectStorageMode,
@@ -26,6 +27,10 @@ import {
   saveDesktopBackup,
   saveDay,
 } from "../lib/planner-client";
+import {
+  ensurePlannerAuthInitialized,
+  plannerAuthState,
+} from "../lib/planner-auth";
 import {
   dispatchPlannerSettingsUpdated,
   PLANNER_SETTINGS_UPDATED_EVENT,
@@ -87,6 +92,8 @@ const referenceFilter = ref("");
 const canOpenBackupFolder = ref(false);
 const canRestoreBackup = ref(false);
 const hasInitialized = ref(false);
+const plannerLoadError = ref("");
+const plannerDataLoadedForSession = ref(false);
 const removeDialog = ref<{
   id: string;
   referencia: string;
@@ -196,6 +203,8 @@ const lastSavedLabel = computed(() =>
   formatTimestamp(dayRecord.value.updatedAt),
 );
 const isTodaySelected = computed(() => selectedDate.value === todayKey());
+const canEditReports = computed(() => plannerAuthState.canEditReports.value);
+const canManageApp = computed(() => plannerAuthState.canManageSettings.value);
 const savingStateLabel = computed(() => {
   if (savingState.value === "saving") {
     return "Guardando...";
@@ -391,6 +400,12 @@ async function loadSelectedDay(dateKey = selectedDate.value) {
 
     await applyLoadedDayRecord(record);
     savingState.value = "idle";
+    plannerLoadError.value = "";
+  } catch (error) {
+    if (requestId === dayLoadRequest) {
+      console.error("No se pudo cargar el día seleccionado.", error);
+      plannerLoadError.value = "No se pudo cargar el día seleccionado.";
+    }
   } finally {
     if (requestId === dayLoadRequest) {
       hydrating.value = false;
@@ -412,6 +427,12 @@ async function loadSelectedMonth(targetMonthKey = monthKey.value) {
 
     monthRecords.value = records;
     savingState.value = "idle";
+    plannerLoadError.value = "";
+  } catch (error) {
+    if (requestId === monthLoadRequest) {
+      console.error("No se pudo cargar la vista mensual.", error);
+      plannerLoadError.value = "No se pudo cargar la vista mensual.";
+    }
   } finally {
     if (requestId === monthLoadRequest) {
       monthLoading.value = false;
@@ -422,13 +443,20 @@ async function loadSelectedMonth(targetMonthKey = monthKey.value) {
 async function loadAllRecords() {
   try {
     allRecords.value = await loadAllDays();
+    plannerLoadError.value = "";
   } catch (error) {
     console.error(error);
+    plannerLoadError.value = "No se pudieron cargar los informes guardados.";
+    throw error;
   }
 }
 
 async function runDesktopBackup(reason: string) {
-  if (typeof window === "undefined" || !window.desktopPlanner?.saveBackup) {
+  if (
+    !canManageApp.value ||
+    typeof window === "undefined" ||
+    !window.desktopPlanner?.saveBackup
+  ) {
     return;
   }
 
@@ -488,7 +516,7 @@ const restoreLinkLabel = computed(() =>
 );
 
 async function openBackupFolder() {
-  if (!canOpenBackupFolder.value) {
+  if (!canManageApp.value || !canOpenBackupFolder.value) {
     return;
   }
 
@@ -500,7 +528,7 @@ async function openBackupFolder() {
 }
 
 async function restoreBackup() {
-  if (!canRestoreBackup.value) {
+  if (!canManageApp.value || !canRestoreBackup.value) {
     return;
   }
 
@@ -555,8 +583,12 @@ async function loadAsignadoOptions() {
   try {
     const settings = await loadSettings();
     applyPlannerSettings(settings);
+    plannerLoadError.value = "";
   } catch (error) {
     console.error(error);
+    plannerLoadError.value =
+      "No se pudo cargar la configuración compartida de la agenda.";
+    throw error;
   }
 }
 
@@ -577,6 +609,77 @@ async function refreshStorageMode() {
   } catch (error) {
     console.error(error);
     storageModeStatus.value = "error";
+    throw error;
+  }
+}
+
+function stopBackupSchedule() {
+  if (backupTimer) {
+    window.clearTimeout(backupTimer);
+    backupTimer = undefined;
+  }
+
+  if (backupIntervalId) {
+    window.clearInterval(backupIntervalId);
+    backupIntervalId = undefined;
+  }
+}
+
+function startBackupScheduleIfAllowed() {
+  if (
+    !canManageApp.value ||
+    typeof window === "undefined" ||
+    !window.desktopPlanner?.saveBackup
+  ) {
+    return;
+  }
+
+  queueDesktopBackup("startup");
+  backupIntervalId = window.setInterval(() => {
+    void runDesktopBackup("interval");
+  }, AUTO_BACKUP_INTERVAL_MS);
+}
+
+function resetPlannerDataState() {
+  stopBackupSchedule();
+  hasInitialized.value = false;
+  plannerDataLoadedForSession.value = false;
+  plannerLoadError.value = "";
+  loading.value = false;
+  monthLoading.value = false;
+  savingState.value = "idle";
+  hydrating.value = false;
+  suppressAutoSave.value = false;
+  dayRecord.value = createEmptyDay(selectedDate.value);
+  monthRecords.value = {};
+  allRecords.value = {};
+  plannerSettings.value = createDefaultPlannerSettings();
+  asignadoOptions.value = [];
+  removeDialog.value = null;
+  moveDialog.value = null;
+  moveDialogError.value = "";
+  movingEntry.value = false;
+}
+
+async function initializePlannerDataForSession() {
+  if (plannerDataLoadedForSession.value) {
+    return;
+  }
+
+  plannerLoadError.value = "";
+
+  try {
+    await refreshStorageMode();
+    await loadAllRecords();
+    await loadAsignadoOptions();
+    await Promise.all([loadSelectedDay(), loadSelectedMonth()]);
+    plannerDataLoadedForSession.value = true;
+    hasInitialized.value = true;
+    startBackupScheduleIfAllowed();
+  } catch (error) {
+    console.error("No se pudo inicializar la agenda.", error);
+    plannerLoadError.value =
+      "No se pudo cargar la agenda para el usuario actual.";
   }
 }
 
@@ -719,7 +822,7 @@ function applyInitialNavigationState() {
 }
 
 async function flushPendingDaySave() {
-  if (!saveTimer) {
+  if (!saveTimer || !canEditReports.value) {
     return;
   }
 
@@ -734,6 +837,10 @@ async function flushPendingDaySave() {
 }
 
 function openRemoveDialog(entry: DayEntry) {
+  if (!canEditReports.value) {
+    return;
+  }
+
   removeDialog.value = {
     id: entry.id,
     referencia: entry.referencia.trim() || "Sin referencia",
@@ -746,6 +853,10 @@ function closeRemoveDialog() {
 }
 
 function openMoveDialog(entry: DayEntry) {
+  if (!canEditReports.value) {
+    return;
+  }
+
   moveDialog.value = {
     id: entry.id,
     referencia: entry.referencia.trim() || "Sin referencia",
@@ -765,6 +876,10 @@ function closeMoveDialog(force = false) {
 }
 
 async function addRow() {
+  if (!canEditReports.value) {
+    return;
+  }
+
   const entry = createEmptyEntry();
   dayRecord.value.entries.push(entry);
   queueSave();
@@ -773,6 +888,10 @@ async function addRow() {
 }
 
 function removeRow(id: string) {
+  if (!canEditReports.value) {
+    return;
+  }
+
   const entryToRemove = dayRecord.value.entries.find(
     (entry) => entry.id === id,
   );
@@ -797,7 +916,7 @@ function confirmRemoveRow() {
 }
 
 async function confirmMoveEntry() {
-  if (!moveDialog.value || movingEntry.value) {
+  if (!moveDialog.value || movingEntry.value || !canEditReports.value) {
     return;
   }
 
@@ -915,6 +1034,26 @@ watch(
   { deep: true },
 );
 
+watch(
+  [plannerAuthState.authReady, plannerAuthState.isAuthenticated],
+  ([authReady, isAuthenticated]) => {
+    if (!authReady) {
+      return;
+    }
+
+    if (!isAuthenticated) {
+      resetPlannerDataState();
+      return;
+    }
+
+    if (plannerDataLoadedForSession.value) {
+      return;
+    }
+
+    void initializePlannerDataForSession();
+  },
+);
+
 onMounted(() => {
   window.addEventListener("keydown", handleWindowKeydown);
   window.addEventListener(
@@ -928,19 +1067,11 @@ onMounted(() => {
     typeof window !== "undefined" && window.desktopPlanner?.selectBackup,
   );
   applyInitialNavigationState();
-  void refreshStorageMode();
-  void loadAllRecords();
-  void loadAsignadoOptions();
-  void loadSelectedDay();
-  void loadSelectedMonth();
-  hasInitialized.value = true;
-
-  if (typeof window !== "undefined" && window.desktopPlanner?.saveBackup) {
-    queueDesktopBackup("startup");
-    backupIntervalId = window.setInterval(() => {
-      void runDesktopBackup("interval");
-    }, AUTO_BACKUP_INTERVAL_MS);
-  }
+  void ensurePlannerAuthInitialized().then(() => {
+    if (plannerAuthState.isAuthenticated.value) {
+      void initializePlannerDataForSession();
+    }
+  });
 });
 
 onBeforeUnmount(() => {
@@ -958,15 +1089,29 @@ onBeforeUnmount(() => {
     window.clearTimeout(backupTimer);
   }
 
-  if (backupIntervalId) {
-    window.clearInterval(backupIntervalId);
-  }
+  stopBackupSchedule();
 });
 </script>
 
 <template>
   <main class="planner-app">
-    <section class="planner-sheet">
+    <AuthAccessCard
+      v-if="
+        plannerAuthState.authReady.value &&
+        !plannerAuthState.isAuthenticated.value
+      "
+      title="Acceso a la agenda"
+      subtitle="Inicia sesión para entrar en la agenda diaria."
+    />
+
+    <section
+      v-else-if="plannerAuthState.isAuthenticated.value"
+      class="planner-sheet"
+    >
+      <p v-if="plannerLoadError" class="sheet-alert sheet-alert--error">
+        {{ plannerLoadError }}
+      </p>
+
       <section
         class="sheet-toolbar"
         :class="{
@@ -1034,7 +1179,11 @@ onBeforeUnmount(() => {
 
         <div class="toolbar-group toolbar-group--date">
           <label class="date-field">
-            <input v-model="selectedDate" :disabled="hasReferenceSearch" type="date" />
+            <input
+              v-model="selectedDate"
+              :disabled="hasReferenceSearch"
+              type="date"
+            />
           </label>
         </div>
       </section>
@@ -1053,7 +1202,10 @@ onBeforeUnmount(() => {
       >
         <div class="month-summary__header">
           <h3>{{ formattedTitle }}</h3>
-          <div class="month-summary__tools month-summary__tools--day">
+          <div
+            v-if="canEditReports"
+            class="month-summary__tools month-summary__tools--day"
+          >
             <button
               class="primary-button month-summary__action"
               type="button"
@@ -1205,26 +1357,39 @@ onBeforeUnmount(() => {
         <div v-if="dayRecord.entries.length === 0" class="empty-day">
           <p class="empty-day__title">Este día no tiene informes.</p>
           <p class="empty-day__copy">
-            Puedes dejarlo vacío o crear una nueva fila cuando la necesites.
+            {{
+              canEditReports
+                ? "Puedes dejarlo vacío o crear una nueva fila cuando la necesites."
+                : "Tu usuario tiene acceso de solo consulta para esta vista."
+            }}
           </p>
-          <button class="primary-button" type="button" @click="addRow">
+          <button
+            v-if="canEditReports"
+            class="primary-button"
+            type="button"
+            @click="addRow"
+          >
             Añadir primer informe
           </button>
         </div>
 
-        <div v-else-if="normalizedReferenceFilter.length === 0" class="sheet-table">
+        <div
+          v-else-if="normalizedReferenceFilter.length === 0"
+          class="sheet-table"
+        >
           <article
             v-for="(entry, index) in dayRecord.entries"
             :key="entry.id"
             :ref="(element) => setEntryRowRef(entry.id, element)"
             class="sheet-grid sheet-grid--row"
+            :class="{ 'sheet-grid--readonly': !canEditReports }"
           >
             <div class="row-topbar">
               <span class="row-marker">{{ index + 1 }}</span>
               <div class="row-status">
                 <strong>{{ entry.referencia || "Sin referencia" }}</strong>
               </div>
-              <div class="row-topbar__actions">
+              <div v-if="canEditReports" class="row-topbar__actions">
                 <button
                   class="soft-button row-topbar__action"
                   type="button"
@@ -1245,12 +1410,16 @@ onBeforeUnmount(() => {
             <div class="sheet-grid sheet-grid--body">
               <label class="field">
                 <span class="field-label">Referencia:</span>
-                <input v-model="entry.referencia" type="text" />
+                <input
+                  v-model="entry.referencia"
+                  :readonly="!canEditReports"
+                  type="text"
+                />
               </label>
 
               <label class="field">
                 <span class="field-label">Asignado:</span>
-                <select v-model="entry.asignado">
+                <select v-model="entry.asignado" :disabled="!canEditReports">
                   <option value="">Selecciona un asignado</option>
                   <option
                     v-for="asignadoOption in getAsignadoSelectOptions(
@@ -1270,7 +1439,7 @@ onBeforeUnmount(() => {
 
               <label class="field">
                 <span class="field-label">Planos:</span>
-                <select v-model="entry.plano">
+                <select v-model="entry.plano" :disabled="!canEditReports">
                   <option value="si">Si</option>
                   <option value="no">No</option>
                 </select>
@@ -1278,13 +1447,17 @@ onBeforeUnmount(() => {
 
               <label class="field">
                 <span class="field-label">Localidad:</span>
-                <LocalityAutocomplete v-model="entry.localidad" />
+                <LocalityAutocomplete
+                  v-model="entry.localidad"
+                  :disabled="!canEditReports"
+                />
               </label>
 
               <label class="field">
                 <span class="field-label">Observaciones:</span>
                 <textarea
                   v-model="entry.observaciones"
+                  :readonly="!canEditReports"
                   rows="3"
                   placeholder="Notas de montaje, materiales, seguimiento..."
                 />
@@ -1292,7 +1465,11 @@ onBeforeUnmount(() => {
 
               <label class="field field--checkbox">
                 <span class="field-label">Entregado</span>
-                <input v-model="entry.entregado" type="checkbox" />
+                <input
+                  v-model="entry.entregado"
+                  :disabled="!canEditReports"
+                  type="checkbox"
+                />
               </label>
             </div>
           </article>
@@ -1304,6 +1481,7 @@ onBeforeUnmount(() => {
           {{ storageCaption }}
         </small>
         <button
+          v-if="canManageApp"
           class="footer-link"
           :disabled="!canOpenBackupFolder"
           type="button"
@@ -1312,6 +1490,7 @@ onBeforeUnmount(() => {
           {{ backupLinkLabel }}
         </button>
         <button
+          v-if="canManageApp"
           class="footer-link"
           :disabled="!canRestoreBackup"
           type="button"
@@ -1323,7 +1502,7 @@ onBeforeUnmount(() => {
     </section>
 
     <div
-      v-if="removeDialog"
+      v-if="canEditReports && removeDialog"
       class="confirm-overlay"
       @click.self="closeRemoveDialog"
     >
@@ -1356,7 +1535,7 @@ onBeforeUnmount(() => {
     </div>
 
     <div
-      v-if="moveDialog"
+      v-if="canEditReports && moveDialog"
       class="confirm-overlay"
       @click.self="closeMoveDialog"
     >
@@ -1411,5 +1590,9 @@ onBeforeUnmount(() => {
         </div>
       </section>
     </div>
+
+    <section v-else class="planner-sheet">
+      <p class="sidebar-copy">Comprobando acceso…</p>
+    </section>
   </main>
 </template>

@@ -449,12 +449,8 @@ function writeBrowserSettings(settings: PlannerSettings) {
 
 export async function loadDay(dateKey: string): Promise<DayRecord> {
   if (hasSupabaseConfig()) {
-    try {
-      const record = await loadRemoteDay(dateKey);
-      return normalizeRecord(record ?? createEmptyDay(dateKey));
-    } catch (error) {
-      console.error("No se pudo cargar el dia desde Supabase.", error);
-    }
+    const record = await loadRemoteDay(dateKey);
+    return normalizeRecord(record ?? createEmptyDay(dateKey));
   }
 
   if (typeof window !== "undefined" && window.desktopPlanner) {
@@ -470,15 +466,8 @@ export async function loadDaysForMonth(
   monthKey: string,
 ): Promise<Record<string, DayRecord>> {
   if (hasSupabaseConfig()) {
-    try {
-      const days = await loadRemoteDaysForMonth(monthKey);
-      return normalizeRecordMap(days ?? {});
-    } catch (error) {
-      console.error(
-        "No se pudieron cargar los dias del mes desde Supabase.",
-        error,
-      );
-    }
+    const days = await loadRemoteDaysForMonth(monthKey);
+    return normalizeRecordMap(days ?? {});
   }
 
   if (typeof window !== "undefined" && window.desktopPlanner) {
@@ -498,15 +487,8 @@ export async function loadDaysForMonth(
 
 export async function loadAllDays(): Promise<Record<string, DayRecord>> {
   if (hasSupabaseConfig()) {
-    try {
-      const days = await loadRemoteAllDays();
-      return normalizeRecordMap(days ?? {});
-    } catch (error) {
-      console.error(
-        "No se pudieron cargar todos los dias desde Supabase.",
-        error,
-      );
-    }
+    const days = await loadRemoteAllDays();
+    return normalizeRecordMap(days ?? {});
   }
 
   if (typeof window !== "undefined" && window.desktopPlanner) {
@@ -525,15 +507,10 @@ export async function saveDay(record: DayRecord): Promise<DayRecord> {
   });
 
   if (hasSupabaseConfig()) {
-    try {
-      const saved = await saveRemoteDay(normalized);
+    const saved = await saveRemoteDay(normalized);
 
-      if (saved) {
-        return normalizeRecord(saved);
-      }
-    } catch (error) {
-      console.error("No se pudo guardar el dia en Supabase.", error);
-      throw error;
+    if (saved) {
+      return normalizeRecord(saved);
     }
   }
 
@@ -549,14 +526,7 @@ export async function saveDay(record: DayRecord): Promise<DayRecord> {
 
 export async function loadSettings(): Promise<PlannerSettings> {
   if (hasSupabaseConfig()) {
-    try {
-      return normalizeSettings(await loadRemoteSettings());
-    } catch (error) {
-      console.error(
-        "No se pudo cargar la configuracion desde Supabase.",
-        error,
-      );
-    }
+    return normalizeSettings(await loadRemoteSettings());
   }
 
   if (typeof window !== "undefined" && window.desktopPlanner) {
@@ -572,12 +542,8 @@ export async function saveSettings(
   const normalized = normalizeSettings(settings);
 
   if (hasSupabaseConfig()) {
-    try {
-      const saved = await saveRemoteSettings(normalized);
-      return normalizeSettings(saved);
-    } catch (error) {
-      console.error("No se pudo guardar la configuracion en Supabase.", error);
-    }
+    const saved = await saveRemoteSettings(normalized);
+    return normalizeSettings(saved);
   }
 
   if (typeof window !== "undefined" && window.desktopPlanner) {

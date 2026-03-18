@@ -1,15 +1,29 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   createDefaultPlannerSettings,
   loadSettings,
   saveSettings,
 } from "../lib/planner-client";
+import { getSupabaseClient, hasSupabaseConfig } from "../lib/supabase-client";
+import {
+  createManagedPlannerUser,
+  ensurePlannerAuthInitialized,
+  loadManagedPlannerUsers,
+  PLANNER_AUTH_UPDATED_EVENT,
+  plannerAuthState,
+  setManagedPlannerUserActive,
+  signOutPlannerUser,
+} from "../lib/planner-auth";
 import {
   dispatchPlannerSettingsUpdated,
   PLANNER_SETTINGS_UPDATED_EVENT,
 } from "../lib/planner-ui-events";
-import type { PlannerSettings } from "../lib/planner-types";
+import type {
+  PlannerRole,
+  PlannerSettings,
+  PlannerUserProfile,
+} from "../lib/planner-types";
 import CompanyHeader from "./CompanyHeader.vue";
 
 interface Props {
@@ -30,8 +44,10 @@ function normalizePathname(pathname: string) {
 
 const plannerSettings = ref<PlannerSettings>(createDefaultPlannerSettings());
 const currentPathname = ref(normalizePathname(props.initialPathname));
+const headerUserProfile = ref<PlannerUserProfile | null>(null);
 const brandEditorOpen = ref(false);
 const asignadoEditorOpen = ref(false);
+const usersEditorOpen = ref(false);
 const brandForm = ref({
   companyName: "",
   companySubtitle: "",
@@ -39,15 +55,42 @@ const brandForm = ref({
 });
 const asignadoOptionsDraft = ref<string[]>([]);
 const newAsignadoOption = ref("");
+const userForm = ref<{
+  email: string;
+  password: string;
+  role: PlannerRole;
+}>({
+  email: "",
+  password: "",
+  role: "viewer",
+});
 const brandEditorError = ref("");
 const asignadoOptionError = ref("");
+const userEditorError = ref("");
+const userEditorNotice = ref("");
 const savingBrandSettings = ref(false);
 const savingAsignadoSettings = ref(false);
+const savingUserEditor = ref(false);
+const loadingManagedUsers = ref(false);
+const userActionInFlightId = ref("");
 
 const isAgendaRoute = computed(() => currentPathname.value === "/");
 const isReportsRoute = computed(() => currentPathname.value === "/filtros");
+const isAuthenticated = computed(() =>
+  Boolean(headerUserProfile.value?.isActive),
+);
+const canManageSettings = computed(
+  () => headerUserProfile.value?.role === "admin",
+);
+const canManageUsers = computed(
+  () => headerUserProfile.value?.role === "admin",
+);
 const canEditBranding = computed(
-  () => isAgendaRoute.value || isReportsRoute.value,
+  () =>
+    canManageSettings.value && (isAgendaRoute.value || isReportsRoute.value),
+);
+const canRenderHeaderActions = computed(
+  () => isAuthenticated.value && (isAgendaRoute.value || isReportsRoute.value),
 );
 const displayedSettings = computed<PlannerSettings>(() =>
   brandEditorOpen.value
@@ -65,6 +108,9 @@ const brandButtonLabel = computed(() =>
 const asignadoButtonLabel = computed(() =>
   asignadoEditorOpen.value ? "Cerrar asignados" : "Editar asignados",
 );
+const usersButtonLabel = computed(() =>
+  usersEditorOpen.value ? "Cerrar usuarios" : "Gestionar usuarios",
+);
 const contextualHeaderActionHref = computed(() =>
   isReportsRoute.value ? "/" : "/filtros",
 );
@@ -80,10 +126,22 @@ const contextualHeaderIconPaths = computed(() =>
         "M8 14.5h8v5H8zM16.5 11.5h.01",
       ],
 );
+const currentUserEmail = computed(() => headerUserProfile.value?.email ?? "");
+const currentUserRoleLabel = computed(() => {
+  if (headerUserProfile.value?.role === "admin") {
+    return "Admin";
+  }
+
+  if (headerUserProfile.value?.role === "editor") {
+    return "Editor";
+  }
+
+  return "Solo vista";
+});
 const headerClassName = computed(() => ({
   "app-shell-header--reports": isReportsRoute.value,
   "app-shell-header--editing":
-    brandEditorOpen.value || asignadoEditorOpen.value,
+    brandEditorOpen.value || asignadoEditorOpen.value || usersEditorOpen.value,
 }));
 
 function syncBrandForm(settings: PlannerSettings) {
@@ -98,6 +156,74 @@ function syncAsignadoDraft(settings: PlannerSettings) {
   asignadoOptionsDraft.value = [...settings.asignadoOptions];
 }
 
+function resetUserForm() {
+  userForm.value = {
+    email: "",
+    password: "",
+    role: "viewer",
+  };
+}
+
+function closeAdminEditors() {
+  brandEditorOpen.value = false;
+  asignadoEditorOpen.value = false;
+  usersEditorOpen.value = false;
+}
+
+async function refreshHeaderAuthState() {
+  if (!hasSupabaseConfig()) {
+    headerUserProfile.value = null;
+    return;
+  }
+
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    headerUserProfile.value = null;
+    return;
+  }
+
+  try {
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession();
+
+    if (error || !session?.user) {
+      headerUserProfile.value = null;
+      return;
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("planner_users")
+      .select("id, email, role, is_active, created_at, updated_at")
+      .eq("id", session.user.id)
+      .maybeSingle();
+
+    if (profileError || !profile || !profile.is_active) {
+      headerUserProfile.value = null;
+      return;
+    }
+
+    headerUserProfile.value = {
+      id: profile.id,
+      email: String(profile.email ?? session.user.email ?? "")
+        .trim()
+        .toLowerCase(),
+      role:
+        profile.role === "admin" || profile.role === "editor"
+          ? profile.role
+          : "viewer",
+      isActive: Boolean(profile.is_active),
+      createdAt: profile.created_at ?? new Date().toISOString(),
+      updatedAt: profile.updated_at ?? new Date().toISOString(),
+    };
+  } catch (error) {
+    console.error("No se pudo sincronizar la sesión de la cabecera.", error);
+    headerUserProfile.value = null;
+  }
+}
+
 function syncCurrentPathname() {
   if (typeof window === "undefined") {
     return;
@@ -107,6 +233,13 @@ function syncCurrentPathname() {
 }
 
 async function refreshPlannerSettings() {
+  if (!isAuthenticated.value) {
+    plannerSettings.value = createDefaultPlannerSettings();
+    syncBrandForm(plannerSettings.value);
+    syncAsignadoDraft(plannerSettings.value);
+    return;
+  }
+
   try {
     const settings = await loadSettings();
     plannerSettings.value = settings;
@@ -120,6 +253,24 @@ async function refreshPlannerSettings() {
     }
   } catch (error) {
     console.error("No se pudo cargar la cabecera persistente.", error);
+  }
+}
+
+async function refreshManagedUsers() {
+  if (!canManageUsers.value) {
+    return;
+  }
+
+  loadingManagedUsers.value = true;
+  userEditorError.value = "";
+
+  try {
+    await loadManagedPlannerUsers();
+  } catch (error) {
+    console.error("No se pudo cargar la lista de usuarios.", error);
+    userEditorError.value = "No se pudo cargar la lista de usuarios.";
+  } finally {
+    loadingManagedUsers.value = false;
   }
 }
 
@@ -142,16 +293,41 @@ function handlePlannerSettingsUpdated(event: Event) {
 
 function handleAstroAfterSwap() {
   syncCurrentPathname();
+  void refreshHeaderAuthState();
 }
 
 function handleAstroPageLoad() {
   syncCurrentPathname();
-  void refreshPlannerSettings();
+  void refreshHeaderAuthState();
+  if (isAuthenticated.value) {
+    void refreshPlannerSettings();
+  }
+}
+
+function handleWindowFocus() {
+  void refreshHeaderAuthState();
+}
+
+function handlePlannerAuthUpdated() {
+  void refreshHeaderAuthState().then(() => {
+    if (isAuthenticated.value) {
+      void refreshPlannerSettings();
+
+      if (usersEditorOpen.value && canManageUsers.value) {
+        void refreshManagedUsers();
+      }
+    }
+  });
 }
 
 function handleBrandButtonClick() {
+  if (!canEditBranding.value) {
+    return;
+  }
+
   brandEditorOpen.value = !brandEditorOpen.value;
   asignadoEditorOpen.value = false;
+  usersEditorOpen.value = false;
   brandEditorError.value = "";
 
   if (brandEditorOpen.value) {
@@ -160,13 +336,35 @@ function handleBrandButtonClick() {
 }
 
 function handleAsignadoButtonClick() {
+  if (!canEditBranding.value) {
+    return;
+  }
+
   asignadoEditorOpen.value = !asignadoEditorOpen.value;
   brandEditorOpen.value = false;
+  usersEditorOpen.value = false;
   asignadoOptionError.value = "";
 
   if (asignadoEditorOpen.value) {
     syncAsignadoDraft(plannerSettings.value);
     newAsignadoOption.value = "";
+  }
+}
+
+function handleUsersButtonClick() {
+  if (!canManageUsers.value) {
+    return;
+  }
+
+  usersEditorOpen.value = !usersEditorOpen.value;
+  brandEditorOpen.value = false;
+  asignadoEditorOpen.value = false;
+  userEditorError.value = "";
+  userEditorNotice.value = "";
+
+  if (usersEditorOpen.value) {
+    resetUserForm();
+    void refreshManagedUsers();
   }
 }
 
@@ -224,6 +422,10 @@ async function handleBrandLogoChange(event: Event) {
 }
 
 async function saveBranding() {
+  if (!canEditBranding.value) {
+    return;
+  }
+
   savingBrandSettings.value = true;
   brandEditorError.value = "";
 
@@ -288,6 +490,10 @@ function removeAsignadoOption(optionToRemove: string) {
 }
 
 async function saveAsignadoOptions() {
+  if (!canEditBranding.value) {
+    return;
+  }
+
   if (asignadoOptionsDraft.value.length === 0) {
     asignadoOptionError.value = "Debe quedar al menos una opción disponible.";
     return;
@@ -314,22 +520,163 @@ async function saveAsignadoOptions() {
   }
 }
 
+function getRoleLabel(role: PlannerRole) {
+  if (role === "admin") {
+    return "Admin";
+  }
+
+  if (role === "editor") {
+    return "Editor";
+  }
+
+  return "Solo vista";
+}
+
+function isCurrentManagedUser(user: PlannerUserProfile) {
+  return user.id === headerUserProfile.value?.id;
+}
+
+async function createPlannerUser() {
+  if (!canManageUsers.value) {
+    return;
+  }
+
+  userEditorError.value = "";
+  userEditorNotice.value = "";
+  savingUserEditor.value = true;
+
+  try {
+    const email = userForm.value.email.trim();
+    const password = userForm.value.password.trim();
+
+    if (!email || !password) {
+      throw new Error("Escribe email y contraseña para el nuevo usuario.");
+    }
+
+    if (password.length < 8) {
+      throw new Error(
+        "La contraseña inicial debe tener al menos 8 caracteres.",
+      );
+    }
+
+    await createManagedPlannerUser({
+      email,
+      password,
+      role: userForm.value.role,
+    });
+
+    userEditorNotice.value = `Usuario ${email} creado correctamente.`;
+    resetUserForm();
+  } catch (error) {
+    console.error("No se pudo crear el usuario.", error);
+    userEditorError.value =
+      error instanceof Error ? error.message : "No se pudo crear el usuario.";
+  } finally {
+    savingUserEditor.value = false;
+  }
+}
+
+async function toggleManagedUserActive(
+  user: PlannerUserProfile,
+  nextIsActive: boolean,
+) {
+  if (!canManageUsers.value || userActionInFlightId.value) {
+    return;
+  }
+
+  userEditorError.value = "";
+  userEditorNotice.value = "";
+  userActionInFlightId.value = user.id;
+
+  try {
+    await setManagedPlannerUserActive({
+      userId: user.id,
+      isActive: nextIsActive,
+    });
+    userEditorNotice.value = nextIsActive
+      ? `Usuario ${user.email} reactivado.`
+      : `Usuario ${user.email} dado de baja.`;
+  } catch (error) {
+    console.error("No se pudo actualizar el estado del usuario.", error);
+    userEditorError.value =
+      error instanceof Error
+        ? error.message
+        : "No se pudo actualizar el estado del usuario.";
+  } finally {
+    userActionInFlightId.value = "";
+  }
+}
+
+async function handleSignOut() {
+  closeAdminEditors();
+  userEditorError.value = "";
+  userEditorNotice.value = "";
+  resetUserForm();
+  await signOutPlannerUser();
+  headerUserProfile.value = null;
+}
+
 onMounted(() => {
   syncCurrentPathname();
   syncBrandForm(plannerSettings.value);
   syncAsignadoDraft(plannerSettings.value);
-  void refreshPlannerSettings();
+  resetUserForm();
+  void ensurePlannerAuthInitialized().then(() => {
+    void refreshHeaderAuthState().then(() => {
+      if (isAuthenticated.value) {
+        void refreshPlannerSettings();
+      }
+    });
+  });
   document.addEventListener("astro:after-swap", handleAstroAfterSwap);
   document.addEventListener("astro:page-load", handleAstroPageLoad);
+  window.addEventListener("focus", handleWindowFocus);
+  window.addEventListener(PLANNER_AUTH_UPDATED_EVENT, handlePlannerAuthUpdated);
   window.addEventListener(
     PLANNER_SETTINGS_UPDATED_EVENT,
     handlePlannerSettingsUpdated,
   );
 });
 
+watch(isAuthenticated, (nextIsAuthenticated) => {
+  if (!nextIsAuthenticated) {
+    closeAdminEditors();
+    userEditorError.value = "";
+    userEditorNotice.value = "";
+    resetUserForm();
+    plannerSettings.value = createDefaultPlannerSettings();
+    syncBrandForm(plannerSettings.value);
+    syncAsignadoDraft(plannerSettings.value);
+    return;
+  }
+
+  void refreshPlannerSettings();
+});
+
+watch(canManageUsers, (nextCanManageUsers) => {
+  if (!nextCanManageUsers) {
+    usersEditorOpen.value = false;
+    userEditorError.value = "";
+    userEditorNotice.value = "";
+    resetUserForm();
+  }
+});
+
+watch(canEditBranding, (nextCanEditBranding) => {
+  if (!nextCanEditBranding) {
+    brandEditorOpen.value = false;
+    asignadoEditorOpen.value = false;
+  }
+});
+
 onBeforeUnmount(() => {
   document.removeEventListener("astro:after-swap", handleAstroAfterSwap);
   document.removeEventListener("astro:page-load", handleAstroPageLoad);
+  window.removeEventListener("focus", handleWindowFocus);
+  window.removeEventListener(
+    PLANNER_AUTH_UPDATED_EVENT,
+    handlePlannerAuthUpdated,
+  );
   window.removeEventListener(
     PLANNER_SETTINGS_UPDATED_EVENT,
     handlePlannerSettingsUpdated,
@@ -344,12 +691,29 @@ onBeforeUnmount(() => {
         :settings="displayedSettings"
         fallback-name=""
         fallback-subtitle=""
+        :has-actions="canRenderHeaderActions"
         logo-click-href="/"
       >
-        <template v-if="canEditBranding" #actions>
-          <div class="company-header__actions-stack">
+        <template #actions>
+          <div
+            v-if="canRenderHeaderActions"
+            class="company-header__actions-stack"
+          >
+            <!-- <div class="company-header__user-meta">
+              <strong class="company-header__user-email">{{ currentUserEmail }}</strong>
+              <span class="company-header__user-role">{{ currentUserRoleLabel }}</span>
+            </div> -->
             <div class="company-header__button-group">
               <button
+                v-if="canManageUsers"
+                class="company-header__action-button"
+                type="button"
+                @click="handleUsersButtonClick"
+              >
+                {{ usersButtonLabel }}
+              </button>
+              <button
+                v-if="canEditBranding"
                 class="company-header__action-button"
                 type="button"
                 @click="handleAsignadoButtonClick"
@@ -357,6 +721,7 @@ onBeforeUnmount(() => {
                 {{ asignadoButtonLabel }}
               </button>
               <button
+                v-if="canEditBranding"
                 class="company-header__action-button"
                 type="button"
                 @click="handleBrandButtonClick"
@@ -386,10 +751,137 @@ onBeforeUnmount(() => {
                   />
                 </svg>
               </a>
+              <button
+                class="company-header__action-button company-header__action-button--logout"
+                type="button"
+                @click="handleSignOut"
+              >
+                Salir
+              </button>
             </div>
           </div>
         </template>
       </CompanyHeader>
+
+      <section v-if="canManageUsers && usersEditorOpen" class="users-editor">
+        <div class="users-editor__header">
+          <p class="sidebar-copy">
+            Crea nuevos usuarios y da de baja o reactiva cuentas existentes.
+            Solo el administrador puede gestionar accesos.
+          </p>
+        </div>
+
+        <div class="users-editor__grid">
+          <label class="field">
+            <span class="field-label">Email:</span>
+            <input
+              v-model="userForm.email"
+              type="email"
+              autocomplete="off"
+              placeholder="persona@empresa.com"
+            />
+          </label>
+
+          <label class="field">
+            <span class="field-label">Contraseña inicial:</span>
+            <input
+              v-model="userForm.password"
+              type="password"
+              autocomplete="new-password"
+              placeholder="Mínimo 8 caracteres"
+            />
+          </label>
+
+          <label class="field">
+            <span class="field-label">Rol:</span>
+            <select v-model="userForm.role">
+              <option value="viewer">Solo vista</option>
+              <option value="editor">Editor</option>
+              <option value="admin">Admin</option>
+            </select>
+          </label>
+
+          <div class="brand-editor__actions users-editor__actions">
+            <button
+              class="primary-button"
+              type="button"
+              :disabled="savingUserEditor"
+              @click="createPlannerUser"
+            >
+              {{ savingUserEditor ? "Creando usuario..." : "Crear usuario" }}
+            </button>
+          </div>
+        </div>
+
+        <p v-if="userEditorError" class="pedido-editor__error">
+          {{ userEditorError }}
+        </p>
+        <p v-else-if="userEditorNotice" class="users-editor__notice">
+          {{ userEditorNotice }}
+        </p>
+
+        <div v-if="loadingManagedUsers" class="users-editor__state">
+          Cargando usuarios...
+        </div>
+        <div
+          v-else-if="plannerAuthState.managedUsers.value.length === 0"
+          class="users-editor__state"
+        >
+          Todavía no hay usuarios creados.
+        </div>
+        <div v-else class="users-editor__list">
+          <article
+            v-for="managedUser in plannerAuthState.managedUsers.value"
+            :key="managedUser.id"
+            class="users-editor__item"
+          >
+            <div class="users-editor__item-main">
+              <strong>{{ managedUser.email }}</strong>
+              <div class="users-editor__badges">
+                <span class="users-editor__badge users-editor__badge--role">
+                  {{ getRoleLabel(managedUser.role) }}
+                </span>
+                <span
+                  class="users-editor__badge"
+                  :class="
+                    managedUser.isActive
+                      ? 'users-editor__badge--active'
+                      : 'users-editor__badge--inactive'
+                  "
+                >
+                  {{ managedUser.isActive ? "Activo" : "Baja" }}
+                </span>
+                <span
+                  v-if="isCurrentManagedUser(managedUser)"
+                  class="users-editor__badge users-editor__badge--self"
+                >
+                  Tu cuenta
+                </span>
+              </div>
+            </div>
+
+            <div class="users-editor__item-actions">
+              <button
+                v-if="!isCurrentManagedUser(managedUser)"
+                class="ghost-button"
+                type="button"
+                :disabled="userActionInFlightId === managedUser.id"
+                @click="
+                  toggleManagedUserActive(managedUser, !managedUser.isActive)
+                "
+              >
+                {{
+                  userActionInFlightId === managedUser.id
+                    ? "Guardando..."
+                    : managedUser.isActive
+                      ? "Dar de baja"
+                      : "Reactivar"
+                }}
+              </button>
+            </div>
+          </article>
+        </div>
+      </section>
 
       <section v-if="canEditBranding && brandEditorOpen" class="brand-editor">
         <div class="brand-editor__header">

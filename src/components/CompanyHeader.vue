@@ -8,6 +8,7 @@ interface Props {
   fallbackSubtitle?: string;
   compact?: boolean;
   logoClickHref?: string;
+  hasActions?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -15,6 +16,7 @@ const props = withDefaults(defineProps<Props>(), {
   fallbackSubtitle: "",
   compact: false,
   logoClickHref: "",
+  hasActions: false,
 });
 const slots = useSlots();
 
@@ -27,7 +29,7 @@ const displaySubtitle = computed(
 const hasLogo = computed(() =>
   props.settings.companyLogoDataUrl.trim().startsWith("data:image/"),
 );
-const hasActions = computed(() => Boolean(slots.actions));
+const hasActions = computed(() => props.hasActions || Boolean(slots.actions));
 
 function reloadApp() {
   if (typeof window === "undefined") {
@@ -70,16 +72,19 @@ function reloadApp() {
     </div>
 
     <div
-      class="company-header__copy"
-      :class="{ 'company-header__copy--with-actions': hasActions }"
+      class="company-header__body"
+      :class="{ 'company-header__body--with-actions': hasActions }"
     >
-      <strong class="company-header__name">{{ displayName }}</strong>
+      <div class="company-header__copy">
+        <strong class="company-header__name">{{ displayName }}</strong>
+        <p v-if="displaySubtitle" class="company-header__subtitle">
+          {{ displaySubtitle }}
+        </p>
+      </div>
+
       <div v-if="hasActions" class="company-header__actions">
         <slot name="actions" />
       </div>
-      <p v-if="displaySubtitle" class="company-header__subtitle">
-        {{ displaySubtitle }}
-      </p>
     </div>
   </section>
 </template>

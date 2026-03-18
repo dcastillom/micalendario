@@ -2,12 +2,17 @@
 import { navigate } from "astro:transitions/client";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import * as xlsxModule from "xlsx";
+import AuthAccessCard from "./AuthAccessCard.vue";
 import CompanyHeader from "./CompanyHeader.vue";
 import {
   createDefaultPlannerSettings,
   loadAllDays,
   loadSettings,
 } from "../lib/planner-client";
+import {
+  ensurePlannerAuthInitialized,
+  plannerAuthState,
+} from "../lib/planner-auth";
 import { PLANNER_SETTINGS_UPDATED_EVENT } from "../lib/planner-ui-events";
 import type { DayEntry, PlannerSettings } from "../lib/planner-types";
 
@@ -82,6 +87,7 @@ const filters = ref<FiltersState>({ ...DEFAULT_FILTERS });
 const sortField = ref<SortField>(DEFAULT_SORT_FIELD);
 const sortDirection = ref<SortDirection>(DEFAULT_SORT_DIRECTION);
 const currentPage = ref(1);
+const reportsLoadedForSession = ref(false);
 
 const REPORTS_PER_PAGE = 25;
 const XLSX_MIME_TYPE =
@@ -727,7 +733,16 @@ onMounted(() => {
     PLANNER_SETTINGS_UPDATED_EVENT,
     handlePlannerSettingsUpdated,
   );
-  void loadReports();
+  void ensurePlannerAuthInitialized().then(() => {
+    if (plannerAuthState.isAuthenticated.value) {
+      reportsLoadedForSession.value = true;
+      void loadReports();
+      return;
+    }
+
+    loading.value = false;
+    plannerSettingsReady.value = true;
+  });
 });
 
 onBeforeUnmount(() => {
@@ -741,11 +756,49 @@ watch(filteredReports, () => {
   currentPage.value = 1;
   exportError.value = "";
 });
+
+watch(
+  [plannerAuthState.authReady, plannerAuthState.isAuthenticated],
+  ([authReady, isAuthenticated]) => {
+    if (!authReady) {
+      return;
+    }
+
+    if (!isAuthenticated) {
+      reportsLoadedForSession.value = false;
+      reports.value = [];
+      loading.value = false;
+      loadError.value = "";
+      exportError.value = "";
+      plannerSettingsReady.value = true;
+      return;
+    }
+
+    if (reportsLoadedForSession.value) {
+      return;
+    }
+
+    reportsLoadedForSession.value = true;
+    void loadReports();
+  },
+);
 </script>
 
 <template>
   <main class="reports-page">
-    <section class="reports-sheet">
+    <AuthAccessCard
+      v-if="
+        plannerAuthState.authReady.value &&
+        !plannerAuthState.isAuthenticated.value
+      "
+      title="Acceso a filtros"
+      subtitle="Inicia sesión para filtrar informes, imprimirlos o exportarlos a Excel."
+    />
+
+    <section
+      v-else-if="plannerAuthState.isAuthenticated.value"
+      class="reports-sheet"
+    >
       <header class="reports-header no-print">
         <p class="sidebar-copy reports-header__intro">
           Filtra por cualquier campo del informe y genera un listado listo para
@@ -1256,6 +1309,10 @@ watch(filteredReports, () => {
           </table>
         </div>
       </section>
+    </section>
+
+    <section v-else class="reports-sheet">
+      <p class="sidebar-copy">Comprobando acceso…</p>
     </section>
   </main>
 </template>

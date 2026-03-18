@@ -33,9 +33,9 @@ export function getSupabaseClient() {
 
   supabaseClient = createClient(getSupabaseUrl(), getSupabaseAnonKey(), {
     auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
+      autoRefreshToken: true,
+      persistSession: true,
+    },
   });
 
   return supabaseClient;

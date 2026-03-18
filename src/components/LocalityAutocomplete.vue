@@ -2,9 +2,15 @@
 import { computed, ref, watch } from "vue";
 import { SPANISH_LOCALITIES, SPANISH_PROVINCES } from "../lib/spanish-municipalities";
 
-const props = defineProps<{
-  modelValue: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    modelValue: string;
+    disabled?: boolean;
+  }>(),
+  {
+    disabled: false,
+  },
+);
 
 const emit = defineEmits<{
   "update:modelValue": [value: string];
@@ -100,7 +106,20 @@ watch(filteredLocalities, (results) => {
   highlightedIndex.value = results.length > 0 ? 0 : -1;
 });
 
+watch(
+  () => props.disabled,
+  (disabled) => {
+    if (disabled) {
+      isOpen.value = false;
+    }
+  },
+);
+
 function openDropdown() {
+  if (props.disabled) {
+    return;
+  }
+
   isOpen.value = true;
 }
 
@@ -111,6 +130,10 @@ function closeDropdown() {
 }
 
 function handleInput(event: Event) {
+  if (props.disabled) {
+    return;
+  }
+
   const nextValue = (event.target as HTMLInputElement).value;
   inputValue.value = nextValue;
   isOpen.value = true;
@@ -123,6 +146,10 @@ function selectLocality(value: string) {
 }
 
 function handleKeydown(event: KeyboardEvent) {
+  if (props.disabled) {
+    return;
+  }
+
   if (!isOpen.value && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
     isOpen.value = true;
     return;
@@ -170,6 +197,7 @@ function commitIfValid() {
   <div class="autocomplete">
     <input
       :value="inputValue"
+      :disabled="props.disabled"
       type="text"
       placeholder="Escribe un municipio o provincia"
       autocomplete="off"
@@ -179,7 +207,7 @@ function commitIfValid() {
       @keydown="handleKeydown"
     />
 
-    <div v-if="isOpen" class="autocomplete__panel">
+    <div v-if="isOpen && !props.disabled" class="autocomplete__panel">
       <button
         v-for="(locality, index) in filteredLocalities"
         :key="locality"
