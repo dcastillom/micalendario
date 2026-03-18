@@ -798,6 +798,16 @@ watch(filteredReports, () => {
         </label>
 
         <label class="field">
+          <span class="field-label">Planos:</span>
+          <select v-model="filters.plano">
+            <option value="">Todos</option>
+            <option value="si">Si</option>
+            <option value="no">No</option>
+            <option value="pendiente">Pendiente</option>
+          </select>
+        </label>
+
+        <label class="field">
           <span class="field-label">Asignado:</span>
           <select v-model="filters.asignado">
             <option value="">Todos</option>
@@ -811,14 +821,13 @@ watch(filteredReports, () => {
           </select>
         </label>
 
-        <label class="field">
-          <span class="field-label">Planos:</span>
-          <select v-model="filters.plano">
-            <option value="">Todos</option>
-            <option value="si">Si</option>
-            <option value="no">No</option>
-            <option value="pendiente">Pendiente</option>
-          </select>
+        <label class="field field--wide">
+          <span class="field-label">Observaciones:</span>
+          <input
+            v-model="filters.observaciones"
+            type="text"
+            placeholder="Texto contenido en observaciones"
+          />
         </label>
 
         <label class="field">
@@ -827,15 +836,6 @@ watch(filteredReports, () => {
             v-model="filters.localidad"
             type="text"
             placeholder="Ej. Madrid"
-          />
-        </label>
-
-        <label class="field field--wide">
-          <span class="field-label">Observaciones:</span>
-          <input
-            v-model="filters.observaciones"
-            type="text"
-            placeholder="Texto contenido en observaciones"
           />
         </label>
 
