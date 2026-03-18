@@ -5,10 +5,20 @@ import type { DayEntry } from "../lib/planner-types";
 
 type PlanoFilter = "" | "si" | "no" | "pendiente";
 type EntregadoFilter = "" | "si" | "no";
+type SortField =
+  | "dateKey"
+  | "referencia"
+  | "asignado"
+  | "plano"
+  | "localidad"
+  | "observaciones"
+  | "entregado";
+type SortDirection = "asc" | "desc";
 
 interface ReportListItem {
   id: string;
   dateKey: string;
+  dateSortValue: number;
   referencia: string;
   asignado: string;
   plano: DayEntry["plano"];
@@ -39,6 +49,19 @@ const DEFAULT_FILTERS: FiltersState = {
   entregado: "",
 };
 
+const DEFAULT_SORT_FIELD: SortField = "dateKey";
+const DEFAULT_SORT_DIRECTION: SortDirection = "desc";
+
+const SORT_FIELD_OPTIONS: Array<{ value: SortField; label: string }> = [
+  { value: "dateKey", label: "Fecha" },
+  { value: "referencia", label: "Referencia" },
+  { value: "asignado", label: "Asignado" },
+  { value: "plano", label: "Planos" },
+  { value: "localidad", label: "Localidad" },
+  { value: "observaciones", label: "Observaciones" },
+  { value: "entregado", label: "Entregado" },
+];
+
 const loading = ref(true);
 const loadError = ref("");
 const exportError = ref("");
@@ -46,6 +69,8 @@ const exporting = ref(false);
 const reports = ref<ReportListItem[]>([]);
 const asignadoOptions = ref<string[]>([]);
 const filters = ref<FiltersState>({ ...DEFAULT_FILTERS });
+const sortField = ref<SortField>(DEFAULT_SORT_FIELD);
+const sortDirection = ref<SortDirection>(DEFAULT_SORT_DIRECTION);
 const currentPage = ref(1);
 
 const REPORTS_PER_PAGE = 25;
@@ -95,6 +120,69 @@ function formatExportTimestamp(value: Date) {
   return `${year}-${month}-${day}_${hours}-${minutes}`;
 }
 
+function compareText(left: string, right: string) {
+  return left.localeCompare(right, "es", {
+    sensitivity: "base",
+    numeric: true,
+  });
+}
+
+function parseDateParts(value: string) {
+  const trimmedValue = value.trim();
+  const dateMatch = trimmedValue.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+
+  if (dateMatch) {
+    const year = Number.parseInt(dateMatch[1], 10);
+    const month = Number.parseInt(dateMatch[2], 10);
+    const day = Number.parseInt(dateMatch[3], 10);
+
+    return { year, month, day };
+  }
+
+  const parsedDate = new Date(trimmedValue);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return null;
+  }
+
+  return {
+    year: parsedDate.getFullYear(),
+    month: parsedDate.getMonth() + 1,
+    day: parsedDate.getDate(),
+  };
+}
+
+function normalizeDateKey(dateKey: string) {
+  const parts = parseDateParts(dateKey);
+
+  if (!parts) {
+    return dateKey.trim();
+  }
+
+  return `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+function getDateSortValue(dateKey: string) {
+  const parts = parseDateParts(dateKey);
+
+  if (!parts) {
+    return 0;
+  }
+
+  return parts.year * 10000 + parts.month * 100 + parts.day;
+}
+
+function compareDateKeys(left: string, right: string) {
+  return getDateSortValue(left) - getDateSortValue(right);
+}
+
+function applySortDirection(
+  comparison: number,
+  direction: SortDirection = sortDirection.value,
+) {
+  return direction === "asc" ? comparison : -comparison;
+}
+
 function getPlanoLabel(value: DayEntry["plano"]) {
   if (value === "si") {
     return "Si";
@@ -109,6 +197,121 @@ function getPlanoLabel(value: DayEntry["plano"]) {
 
 function getEntregadoLabel(value: boolean) {
   return value ? "Si" : "No";
+}
+
+function getSortFieldLabel(field: SortField) {
+  return (
+    SORT_FIELD_OPTIONS.find((option) => option.value === field)?.label ?? "Fecha"
+  );
+}
+
+function getSortDirectionLabel(
+  field: SortField,
+  direction: SortDirection,
+) {
+  if (field === "dateKey") {
+    return direction === "asc"
+      ? "de más antigua a más reciente"
+      : "de más reciente a más antigua";
+  }
+
+  return direction === "asc" ? "ascendente" : "descendente";
+}
+
+function getDefaultSortDirection(field: SortField): SortDirection {
+  return field === "dateKey" ? "desc" : "asc";
+}
+
+function getReportFieldValue(report: ReportListItem, field: SortField) {
+  switch (field) {
+    case "dateKey":
+      return report.dateKey;
+    case "referencia":
+      return report.referencia || "Sin referencia";
+    case "asignado":
+      return report.asignado || "Sin asignar";
+    case "plano":
+      return getPlanoLabel(report.plano);
+    case "localidad":
+      return report.localidad || "Sin localidad";
+    case "observaciones":
+      return report.observaciones || "Sin observaciones";
+    case "entregado":
+      return getEntregadoLabel(report.entregado);
+  }
+}
+
+function compareReports(left: ReportListItem, right: ReportListItem) {
+  if (sortField.value === "dateKey") {
+    const dateComparison = left.dateSortValue - right.dateSortValue;
+
+    if (dateComparison !== 0) {
+      return applySortDirection(dateComparison);
+    }
+
+    const referenceComparison = compareText(
+      left.referencia || "Sin referencia",
+      right.referencia || "Sin referencia",
+    );
+
+    if (referenceComparison !== 0) {
+      return applySortDirection(referenceComparison);
+    }
+
+    return applySortDirection(compareText(left.id, right.id));
+  }
+
+  const primaryComparison = compareText(
+    getReportFieldValue(left, sortField.value),
+    getReportFieldValue(right, sortField.value),
+  );
+
+  if (primaryComparison !== 0) {
+    return applySortDirection(primaryComparison);
+  }
+
+  const dateFallback = left.dateSortValue - right.dateSortValue;
+
+  if (dateFallback !== 0) {
+    return applySortDirection(dateFallback, "desc");
+  }
+
+  const referenceFallback = compareText(
+    left.referencia || "Sin referencia",
+    right.referencia || "Sin referencia",
+  );
+
+  if (referenceFallback !== 0) {
+    return referenceFallback;
+  }
+
+  return compareText(left.id, right.id);
+}
+
+function setSortField(field: SortField) {
+  if (sortField.value === field) {
+    sortDirection.value = sortDirection.value === "asc" ? "desc" : "asc";
+    return;
+  }
+
+  sortField.value = field;
+  sortDirection.value = getDefaultSortDirection(field);
+}
+
+function getSortIndicator(field: SortField) {
+  if (sortField.value !== field) {
+    return "↕";
+  }
+
+  return sortDirection.value === "asc" ? "↑" : "↓";
+}
+
+function getAriaSort(field: SortField) {
+  if (sortField.value !== field) {
+    return "none";
+  }
+
+  return sortDirection.value === "asc" ? "ascending" : "descending";
 }
 
 const normalizedFilters = computed(() => ({
@@ -126,7 +329,7 @@ const dateRangeError = computed(() => {
   if (
     filters.value.dateFrom &&
     filters.value.dateTo &&
-    filters.value.dateFrom > filters.value.dateTo
+    compareDateKeys(filters.value.dateFrom, filters.value.dateTo) > 0
   ) {
     return "La fecha inicial no puede ser posterior a la final.";
   }
@@ -139,67 +342,75 @@ const filteredReports = computed(() => {
     return [];
   }
 
-  return reports.value.filter((report) => {
-    if (filters.value.dateFrom && report.dateKey < filters.value.dateFrom) {
-      return false;
-    }
+  return reports.value
+    .filter((report) => {
+      if (
+        filters.value.dateFrom &&
+        compareDateKeys(report.dateKey, filters.value.dateFrom) < 0
+      ) {
+        return false;
+      }
 
-    if (filters.value.dateTo && report.dateKey > filters.value.dateTo) {
-      return false;
-    }
+      if (
+        filters.value.dateTo &&
+        compareDateKeys(report.dateKey, filters.value.dateTo) > 0
+      ) {
+        return false;
+      }
 
-    if (
-      normalizedFilters.value.referencia &&
-      !normalize(report.referencia).includes(normalizedFilters.value.referencia)
-    ) {
-      return false;
-    }
+      if (
+        normalizedFilters.value.referencia &&
+        !normalize(report.referencia).includes(normalizedFilters.value.referencia)
+      ) {
+        return false;
+      }
 
-    if (
-      normalizedFilters.value.asignado &&
-      !normalize(report.asignado).includes(normalizedFilters.value.asignado)
-    ) {
-      return false;
-    }
+      if (
+        normalizedFilters.value.asignado &&
+        !normalize(report.asignado).includes(normalizedFilters.value.asignado)
+      ) {
+        return false;
+      }
 
-    if (filters.value.plano === "pendiente" && report.plano !== "") {
-      return false;
-    }
+      if (filters.value.plano === "pendiente" && report.plano !== "") {
+        return false;
+      }
 
-    if (
-      filters.value.plano &&
-      filters.value.plano !== "pendiente" &&
-      report.plano !== filters.value.plano
-    ) {
-      return false;
-    }
+      if (
+        filters.value.plano &&
+        filters.value.plano !== "pendiente" &&
+        report.plano !== filters.value.plano
+      ) {
+        return false;
+      }
 
-    if (
-      normalizedFilters.value.localidad &&
-      !normalize(report.localidad).includes(normalizedFilters.value.localidad)
-    ) {
-      return false;
-    }
+      if (
+        normalizedFilters.value.localidad &&
+        !normalize(report.localidad).includes(normalizedFilters.value.localidad)
+      ) {
+        return false;
+      }
 
-    if (
-      normalizedFilters.value.observaciones &&
-      !normalize(report.observaciones).includes(
-        normalizedFilters.value.observaciones,
-      )
-    ) {
-      return false;
-    }
+      if (
+        normalizedFilters.value.observaciones &&
+        !normalize(report.observaciones).includes(
+          normalizedFilters.value.observaciones,
+        )
+      ) {
+        return false;
+      }
 
-    if (filters.value.entregado === "si" && !report.entregado) {
-      return false;
-    }
+      if (filters.value.entregado === "si" && !report.entregado) {
+        return false;
+      }
 
-    if (filters.value.entregado === "no" && report.entregado) {
-      return false;
-    }
+      if (filters.value.entregado === "no" && report.entregado) {
+        return false;
+      }
 
-    return true;
-  });
+      return true;
+    })
+    .sort(compareReports);
 });
 
 const totalPages = computed(() =>
@@ -274,6 +485,25 @@ const resultsSummaryLabel = computed(() => {
   const count = filteredReports.value.length;
   return `${count} ${count === 1 ? "informe" : "informes"} listados`;
 });
+const sortDirectionOptions = computed(() => [
+  {
+    value: "asc" as const,
+    label:
+      sortField.value === "dateKey" ? "Más antigua primero" : "Ascendente",
+  },
+  {
+    value: "desc" as const,
+    label:
+      sortField.value === "dateKey" ? "Más reciente primero" : "Descendente",
+  },
+]);
+const sortSummaryLabel = computed(
+  () =>
+    `Ordenado por ${getSortFieldLabel(sortField.value)} ${getSortDirectionLabel(
+      sortField.value,
+      sortDirection.value,
+    )}.`,
+);
 
 function resetFilters() {
   filters.value = { ...DEFAULT_FILTERS };
@@ -327,6 +557,7 @@ async function exportResults() {
     const summarySheet = xlsx.utils.aoa_to_sheet([
       ["Generado el", formatPrintTimestamp(exportedAt)],
       ["Resultados", filteredReports.value.length],
+      ["Orden", sortSummaryLabel.value],
       [
         "Filtros activos",
         activeFilterTags.value.length > 0
@@ -387,9 +618,12 @@ function openReport(report: ReportListItem) {
 }
 
 function mapEntryToListItem(dateKey: string, entry: DayEntry): ReportListItem {
+  const normalizedDateKey = normalizeDateKey(dateKey);
+
   return {
     id: entry.id,
-    dateKey,
+    dateKey: normalizedDateKey,
+    dateSortValue: getDateSortValue(normalizedDateKey),
     referencia: entry.referencia.trim(),
     asignado: entry.asignado.trim(),
     plano: entry.plano,
@@ -406,23 +640,9 @@ async function loadReports() {
   try {
     const [days, settings] = await Promise.all([loadAllDays(), loadSettings()]);
     asignadoOptions.value = settings.asignadoOptions;
-    reports.value = Object.values(days)
-      .flatMap((record) =>
-        record.entries.map((entry) =>
-          mapEntryToListItem(record.dateKey, entry),
-        ),
-      )
-      .sort((left, right) => {
-        const dateDifference = right.dateKey.localeCompare(left.dateKey);
-
-        if (dateDifference !== 0) {
-          return dateDifference;
-        }
-
-        return left.referencia.localeCompare(right.referencia, "es", {
-          sensitivity: "base",
-        });
-      });
+    reports.value = Object.values(days).flatMap((record) =>
+      record.entries.map((entry) => mapEntryToListItem(record.dateKey, entry)),
+    );
   } catch (error) {
     console.error(error);
     loadError.value = "No se pudieron cargar los informes guardados.";
@@ -548,6 +768,32 @@ watch(filteredReports, () => {
           </select>
         </label>
 
+        <label class="field">
+          <span class="field-label">Ordenar por:</span>
+          <select v-model="sortField">
+            <option
+              v-for="sortFieldOption in SORT_FIELD_OPTIONS"
+              :key="sortFieldOption.value"
+              :value="sortFieldOption.value"
+            >
+              {{ sortFieldOption.label }}
+            </option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span class="field-label">Sentido:</span>
+          <select v-model="sortDirection">
+            <option
+              v-for="directionOption in sortDirectionOptions"
+              :key="directionOption.value"
+              :value="directionOption.value"
+            >
+              {{ directionOption.label }}
+            </option>
+          </select>
+        </label>
+
         <div class="reports-filters__actions">
           <button class="ghost-button" type="button" @click="resetFilters">
             Limpiar filtros
@@ -578,6 +824,10 @@ watch(filteredReports, () => {
           {{ paginationSummaryLabel }}
         </p>
 
+        <p class="reports-summary__sort no-print">
+          {{ sortSummaryLabel }}
+        </p>
+
         <div v-if="activeFilterTags.length" class="reports-summary__chips">
           <span v-for="tag in activeFilterTags" :key="tag" class="reports-chip">
             {{ tag }}
@@ -588,6 +838,7 @@ watch(filteredReports, () => {
       <section class="reports-print-head only-print">
         <p>Generado el {{ printTimestampLabel }}</p>
         <p>{{ resultsSummaryLabel }}</p>
+        <p>{{ sortSummaryLabel }}</p>
         <p v-if="activeFilterTags.length">
           {{ activeFilterTags.join(" · ") }}
         </p>
@@ -646,13 +897,135 @@ watch(filteredReports, () => {
           <table class="reports-table">
             <thead>
               <tr>
-                <th>Fecha</th>
-                <th>Referencia</th>
-                <th>Asignado</th>
-                <th>Planos</th>
-                <th>Localidad</th>
-                <th class="reports-table__notes">Observaciones</th>
-                <th>Entregado</th>
+                <th :aria-sort="getAriaSort('dateKey')">
+                  <button
+                    class="reports-sort-button"
+                    type="button"
+                    @click="setSortField('dateKey')"
+                  >
+                    <span>Fecha</span>
+                    <span
+                      class="reports-sort-button__icon"
+                      :class="{
+                        'is-active': sortField === 'dateKey',
+                      }"
+                      aria-hidden="true"
+                    >
+                      {{ getSortIndicator("dateKey") }}
+                    </span>
+                  </button>
+                </th>
+                <th :aria-sort="getAriaSort('referencia')">
+                  <button
+                    class="reports-sort-button"
+                    type="button"
+                    @click="setSortField('referencia')"
+                  >
+                    <span>Referencia</span>
+                    <span
+                      class="reports-sort-button__icon"
+                      :class="{
+                        'is-active': sortField === 'referencia',
+                      }"
+                      aria-hidden="true"
+                    >
+                      {{ getSortIndicator("referencia") }}
+                    </span>
+                  </button>
+                </th>
+                <th :aria-sort="getAriaSort('asignado')">
+                  <button
+                    class="reports-sort-button"
+                    type="button"
+                    @click="setSortField('asignado')"
+                  >
+                    <span>Asignado</span>
+                    <span
+                      class="reports-sort-button__icon"
+                      :class="{
+                        'is-active': sortField === 'asignado',
+                      }"
+                      aria-hidden="true"
+                    >
+                      {{ getSortIndicator("asignado") }}
+                    </span>
+                  </button>
+                </th>
+                <th :aria-sort="getAriaSort('plano')">
+                  <button
+                    class="reports-sort-button"
+                    type="button"
+                    @click="setSortField('plano')"
+                  >
+                    <span>Planos</span>
+                    <span
+                      class="reports-sort-button__icon"
+                      :class="{
+                        'is-active': sortField === 'plano',
+                      }"
+                      aria-hidden="true"
+                    >
+                      {{ getSortIndicator("plano") }}
+                    </span>
+                  </button>
+                </th>
+                <th :aria-sort="getAriaSort('localidad')">
+                  <button
+                    class="reports-sort-button"
+                    type="button"
+                    @click="setSortField('localidad')"
+                  >
+                    <span>Localidad</span>
+                    <span
+                      class="reports-sort-button__icon"
+                      :class="{
+                        'is-active': sortField === 'localidad',
+                      }"
+                      aria-hidden="true"
+                    >
+                      {{ getSortIndicator("localidad") }}
+                    </span>
+                  </button>
+                </th>
+                <th
+                  class="reports-table__notes"
+                  :aria-sort="getAriaSort('observaciones')"
+                >
+                  <button
+                    class="reports-sort-button"
+                    type="button"
+                    @click="setSortField('observaciones')"
+                  >
+                    <span>Observaciones</span>
+                    <span
+                      class="reports-sort-button__icon"
+                      :class="{
+                        'is-active': sortField === 'observaciones',
+                      }"
+                      aria-hidden="true"
+                    >
+                      {{ getSortIndicator("observaciones") }}
+                    </span>
+                  </button>
+                </th>
+                <th :aria-sort="getAriaSort('entregado')">
+                  <button
+                    class="reports-sort-button"
+                    type="button"
+                    @click="setSortField('entregado')"
+                  >
+                    <span>Entregado</span>
+                    <span
+                      class="reports-sort-button__icon"
+                      :class="{
+                        'is-active': sortField === 'entregado',
+                      }"
+                      aria-hidden="true"
+                    >
+                      {{ getSortIndicator("entregado") }}
+                    </span>
+                  </button>
+                </th>
               </tr>
             </thead>
             <tbody>

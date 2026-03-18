@@ -1312,6 +1312,13 @@ button {
   font-weight: 700;
 }
 
+.reports-summary__sort {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
 .reports-summary__chips {
   display: flex;
   flex-wrap: wrap;
@@ -1388,6 +1395,48 @@ button {
   font-weight: 800;
   letter-spacing: 0.16em;
   text-transform: uppercase;
+}
+
+.reports-sort-button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.reports-sort-button:hover {
+  color: var(--ink);
+}
+
+.reports-sort-button:focus-visible {
+  outline: 2px solid rgba(31, 107, 90, 0.32);
+  outline-offset: 4px;
+  border-radius: 10px;
+}
+
+.reports-sort-button__icon {
+  font-size: 0.96rem;
+  letter-spacing: 0;
+  opacity: 0.55;
+  transition:
+    opacity 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.reports-sort-button__icon.is-active {
+  opacity: 1;
+  color: var(--accent-strong);
+  transform: translateY(-1px);
 }
 
 .reports-table tbody tr:last-child td {
