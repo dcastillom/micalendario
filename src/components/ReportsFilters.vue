@@ -553,6 +553,14 @@ function goToNextPage() {
   currentPage.value = Math.min(totalPages.value, currentPage.value + 1);
 }
 
+function goToFirstPage() {
+  currentPage.value = 1;
+}
+
+function goToLastPage() {
+  currentPage.value = totalPages.value;
+}
+
 async function printResults() {
   if (typeof window === "undefined" || filteredReports.value.length === 0) {
     return;
@@ -715,7 +723,10 @@ function handlePlannerSettingsUpdated(event: Event) {
 }
 
 onMounted(() => {
-  window.addEventListener(PLANNER_SETTINGS_UPDATED_EVENT, handlePlannerSettingsUpdated);
+  window.addEventListener(
+    PLANNER_SETTINGS_UPDATED_EVENT,
+    handlePlannerSettingsUpdated,
+  );
   void loadReports();
 });
 
@@ -904,10 +915,13 @@ watch(filteredReports, () => {
         </div>
       </section>
 
-      <section v-if="plannerSettingsReady" class="reports-print-head only-print">
+      <section
+        v-if="plannerSettingsReady"
+        class="reports-print-head only-print"
+      >
         <CompanyHeader
           :settings="plannerSettings"
-          fallback-name="Mi Calendario"
+          fallback-name=""
           fallback-subtitle=""
           compact
         />
@@ -949,6 +963,15 @@ watch(filteredReports, () => {
             class="ghost-button"
             type="button"
             :disabled="currentPage === 1"
+            @click="goToFirstPage"
+          >
+            Primera
+          </button>
+
+          <button
+            class="ghost-button"
+            type="button"
+            :disabled="currentPage === 1"
             @click="goToPreviousPage"
           >
             Anterior
@@ -965,6 +988,15 @@ watch(filteredReports, () => {
             @click="goToNextPage"
           >
             Siguiente
+          </button>
+
+          <button
+            class="ghost-button"
+            type="button"
+            :disabled="currentPage === totalPages"
+            @click="goToLastPage"
+          >
+            Última
           </button>
         </div>
 
@@ -1141,6 +1173,15 @@ watch(filteredReports, () => {
             class="ghost-button"
             type="button"
             :disabled="currentPage === 1"
+            @click="goToFirstPage"
+          >
+            Primera
+          </button>
+
+          <button
+            class="ghost-button"
+            type="button"
+            :disabled="currentPage === 1"
             @click="goToPreviousPage"
           >
             Anterior
@@ -1157,6 +1198,15 @@ watch(filteredReports, () => {
             @click="goToNextPage"
           >
             Siguiente
+          </button>
+
+          <button
+            class="ghost-button"
+            type="button"
+            :disabled="currentPage === totalPages"
+            @click="goToLastPage"
+          >
+            Última
           </button>
         </div>
       </section>

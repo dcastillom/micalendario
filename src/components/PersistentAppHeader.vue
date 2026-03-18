@@ -321,15 +321,13 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div
-    class="app-shell-header no-print"
-    :class="headerClassName"
-  >
+  <div class="app-shell-header no-print" :class="headerClassName">
     <div class="app-shell-header__inner">
       <CompanyHeader
         :settings="displayedSettings"
-        fallback-name="Mi Calendario"
+        fallback-name=""
         fallback-subtitle=""
+        logo-click-href="/"
       >
         <template v-if="canEditBranding" #actions>
           <div class="company-header__button-group">
@@ -354,8 +352,8 @@ onBeforeUnmount(() => {
       <section v-if="canEditBranding && brandEditorOpen" class="brand-editor">
         <div class="brand-editor__header">
           <p class="sidebar-copy">
-            Personaliza la cabecera visible en la app y en los informes
-            impresos con el nombre y el logotipo de tu empresa.
+            Personaliza la cabecera visible en la app y en los informes impresos
+            con el nombre y el logotipo de tu empresa.
           </p>
         </div>
 
@@ -403,7 +401,9 @@ onBeforeUnmount(() => {
               @click="saveBranding"
             >
               {{
-                savingBrandSettings ? "Guardando cabecera..." : "Guardar cabecera"
+                savingBrandSettings
+                  ? "Guardando cabecera..."
+                  : "Guardar cabecera"
               }}
             </button>
           </div>
@@ -414,7 +414,10 @@ onBeforeUnmount(() => {
         </p>
       </section>
 
-      <section v-if="canEditBranding && asignadoEditorOpen" class="pedido-editor">
+      <section
+        v-if="canEditBranding && asignadoEditorOpen"
+        class="pedido-editor"
+      >
         <div class="pedido-editor__header">
           <p class="pedido-editor__copy">
             Añade o elimina las opciones que aparecerán en el dropdown de

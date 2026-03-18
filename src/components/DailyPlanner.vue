@@ -195,6 +195,7 @@ const occupiedRows = computed(
 const lastSavedLabel = computed(() =>
   formatTimestamp(dayRecord.value.updatedAt),
 );
+const isTodaySelected = computed(() => selectedDate.value === todayKey());
 const savingStateLabel = computed(() => {
   if (savingState.value === "saving") {
     return "Guardando...";
@@ -980,7 +981,12 @@ onBeforeUnmount(() => {
           <button class="ghost-button" type="button" @click="shiftDay(-1)">
             {{ viewMode === "day" ? "Día anterior" : "Mes anterior" }}
           </button>
-          <button class="ghost-button" type="button" @click="jumpToToday">
+          <button
+            class="ghost-button"
+            :class="{ 'is-today': isTodaySelected }"
+            type="button"
+            @click="jumpToToday"
+          >
             Hoy
           </button>
           <button class="ghost-button" type="button" @click="shiftDay(1)">
