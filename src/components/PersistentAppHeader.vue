@@ -65,6 +65,23 @@ const brandButtonLabel = computed(() =>
 const asignadoButtonLabel = computed(() =>
   asignadoEditorOpen.value ? "Cerrar asignados" : "Editar asignados",
 );
+const contextualHeaderActionHref = computed(() =>
+  isReportsRoute.value ? "/" : "/filtros",
+);
+const contextualHeaderActionLabel = computed(() =>
+  isReportsRoute.value ? "Volver a la agenda" : "Ir a filtros e impresión",
+);
+const contextualHeaderIconPaths = computed(() =>
+  isReportsRoute.value
+    ? [
+        "M4 10.5 12 4l8 6.5v8.5a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z",
+      ]
+    : [
+        "M7 8V4.5A1.5 1.5 0 0 1 8.5 3h7A1.5 1.5 0 0 1 17 4.5V8",
+        "M6.5 19H17.5A1.5 1.5 0 0 0 19 17.5V11a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6.5A1.5 1.5 0 0 0 6.5 19Z",
+        "M8 14.5h8v5H8zM16.5 11.5h.01",
+      ],
+);
 const headerClassName = computed(() => ({
   "app-shell-header--reports": isReportsRoute.value,
   "app-shell-header--editing":
@@ -349,11 +366,27 @@ onBeforeUnmount(() => {
                 {{ brandButtonLabel }}
               </button>
               <a
-                v-if="isAgendaRoute"
-                class="ghost-link company-header__action-button company-header__action-button--filters"
-                href="/filtros"
+                class="ghost-link company-header__action-button company-header__action-button--filters company-header__action-button--icon"
+                :aria-label="contextualHeaderActionLabel"
+                :href="contextualHeaderActionHref"
+                :title="contextualHeaderActionLabel"
               >
-                Filtros
+                <svg
+                  aria-hidden="true"
+                  class="company-header__action-icon"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    v-for="path in contextualHeaderIconPaths"
+                    :key="path"
+                    :d="path"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.9"
+                  />
+                </svg>
               </a>
             </div>
           </div>

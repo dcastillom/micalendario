@@ -411,6 +411,19 @@ button {
   color: var(--accent-strong);
 }
 
+.company-header__action-button--icon {
+  width: 50px;
+  min-width: 50px;
+  min-height: 50px;
+  padding: 0;
+}
+
+.company-header__action-icon {
+  width: 26px;
+  height: 26px;
+  display: block;
+}
+
 .company-header__action-button:focus {
   outline: none;
 }
