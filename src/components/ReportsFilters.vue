@@ -1311,7 +1311,7 @@ watch(
       </section>
     </section>
 
-    <section v-else class="reports-sheet">
+    <section v-if="!plannerAuthState.authReady.value" class="reports-sheet">
       <p class="sidebar-copy">Comprobando acceso…</p>
     </section>
   </main>

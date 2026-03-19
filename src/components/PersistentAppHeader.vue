@@ -8,6 +8,7 @@ import {
 import { getSupabaseClient, hasSupabaseConfig } from "../lib/supabase-client";
 import {
   createManagedPlannerUser,
+  deleteManagedPlannerUser,
   ensurePlannerAuthInitialized,
   loadManagedPlannerUsers,
   PLANNER_AUTH_UPDATED_EVENT,
@@ -73,6 +74,7 @@ const savingAsignadoSettings = ref(false);
 const savingUserEditor = ref(false);
 const loadingManagedUsers = ref(false);
 const userActionInFlightId = ref("");
+const removeUserDialog = ref<PlannerUserProfile | null>(null);
 
 const isAgendaRoute = computed(() => currentPathname.value === "/");
 const isReportsRoute = computed(() => currentPathname.value === "/filtros");
@@ -536,6 +538,30 @@ function isCurrentManagedUser(user: PlannerUserProfile) {
   return user.id === headerUserProfile.value?.id;
 }
 
+function openRemoveManagedUserDialog(user: PlannerUserProfile) {
+  if (!canManageUsers.value || userActionInFlightId.value) {
+    return;
+  }
+
+  if (isCurrentManagedUser(user)) {
+    userEditorError.value =
+      "No puedes eliminar definitivamente tu propia cuenta desde este panel.";
+    return;
+  }
+
+  userEditorError.value = "";
+  userEditorNotice.value = "";
+  removeUserDialog.value = user;
+}
+
+function closeRemoveManagedUserDialog(force = false) {
+  if (userActionInFlightId.value && !force) {
+    return;
+  }
+
+  removeUserDialog.value = null;
+}
+
 async function createPlannerUser() {
   if (!canManageUsers.value) {
     return;
@@ -607,8 +633,33 @@ async function toggleManagedUserActive(
   }
 }
 
+async function removeManagedUserPermanently(user: PlannerUserProfile) {
+  if (!canManageUsers.value || userActionInFlightId.value) {
+    return;
+  }
+
+  userEditorError.value = "";
+  userEditorNotice.value = "";
+  userActionInFlightId.value = user.id;
+
+  try {
+    await deleteManagedPlannerUser(user.id);
+    userEditorNotice.value = `Usuario ${user.email} eliminado definitivamente.`;
+    closeRemoveManagedUserDialog(true);
+  } catch (error) {
+    console.error("No se pudo eliminar definitivamente el usuario.", error);
+    userEditorError.value =
+      error instanceof Error
+        ? error.message
+        : "No se pudo eliminar definitivamente el usuario.";
+  } finally {
+    userActionInFlightId.value = "";
+  }
+}
+
 async function handleSignOut() {
   closeAdminEditors();
+  closeRemoveManagedUserDialog(true);
   userEditorError.value = "";
   userEditorNotice.value = "";
   resetUserForm();
@@ -656,6 +707,7 @@ watch(isAuthenticated, (nextIsAuthenticated) => {
 watch(canManageUsers, (nextCanManageUsers) => {
   if (!nextCanManageUsers) {
     usersEditorOpen.value = false;
+    closeRemoveManagedUserDialog(true);
     userEditorError.value = "";
     userEditorNotice.value = "";
     resetUserForm();
@@ -766,8 +818,8 @@ onBeforeUnmount(() => {
       <section v-if="canManageUsers && usersEditorOpen" class="users-editor">
         <div class="users-editor__header">
           <p class="sidebar-copy">
-            Crea nuevos usuarios y da de baja o reactiva cuentas existentes.
-            Solo el administrador puede gestionar accesos.
+            Crea nuevos usuarios, dales de baja, reactívalos o elimínalos de
+            forma definitiva. Solo el administrador puede gestionar accesos.
           </p>
         </div>
 
@@ -878,8 +930,78 @@ onBeforeUnmount(() => {
                       : "Reactivar"
                 }}
               </button>
+              <button
+                v-if="!isCurrentManagedUser(managedUser)"
+                class="inline-remove"
+                type="button"
+                :disabled="userActionInFlightId === managedUser.id"
+                @click="openRemoveManagedUserDialog(managedUser)"
+              >
+                {{
+                  userActionInFlightId === managedUser.id
+                    ? "Guardando..."
+                    : "Eliminar"
+                }}
+              </button>
             </div>
           </article>
+        </div>
+
+        <div
+          v-if="removeUserDialog"
+          class="confirm-overlay"
+          @click.self="closeRemoveManagedUserDialog"
+        >
+          <section
+            class="confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="remove-user-dialog-title"
+          >
+            <h2 id="remove-user-dialog-title">
+              ¿Quieres eliminar este usuario definitivamente?
+            </h2>
+            <dl class="confirm-dialog__details">
+              <div>
+                <dt>Email:</dt>
+                <dd>{{ removeUserDialog.email }}</dd>
+              </div>
+              <div>
+                <dt>Rol:</dt>
+                <dd>{{ getRoleLabel(removeUserDialog.role) }}</dd>
+              </div>
+              <div>
+                <dt>Estado actual:</dt>
+                <dd>{{ removeUserDialog.isActive ? "Activo" : "Baja" }}</dd>
+              </div>
+            </dl>
+            <p class="pedido-editor__error">
+              Esta acción eliminará la cuenta de forma permanente y no se puede
+              deshacer.
+            </p>
+            <div class="confirm-dialog__actions">
+              <button
+                class="ghost-button"
+                type="button"
+                :disabled="userActionInFlightId === removeUserDialog.id"
+                @click="closeRemoveManagedUserDialog"
+              >
+                Cancelar
+              </button>
+              <button
+                class="inline-remove"
+                type="button"
+                :disabled="userActionInFlightId === removeUserDialog.id"
+                @click="removeManagedUserPermanently(removeUserDialog)"
+              >
+                {{
+                  userActionInFlightId === removeUserDialog.id
+                    ? "Eliminando..."
+                    : "Eliminar definitivamente"
+                }}
+              </button>
+            </div>
+          </section>
         </div>
       </section>
 

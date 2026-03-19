@@ -1,6 +1,10 @@
 import type { User } from "@supabase/supabase-js";
 import { computed, readonly, ref } from "vue";
-import { getSupabaseClient, hasSupabaseConfig } from "./supabase-client";
+import {
+  getSupabaseAnonKeyValue,
+  getSupabaseClient,
+  hasSupabaseConfig,
+} from "./supabase-client";
 import type { PlannerRole, PlannerUserProfile } from "./planner-types";
 
 export type PlannerAuthStatus =
@@ -81,6 +85,56 @@ function getSupabaseClientOrThrow() {
   return supabase;
 }
 
+async function resolveFunctionInvokeErrorMessage(
+  error: unknown,
+  fallbackMessage: string,
+) {
+  if (error && typeof error === "object" && "context" in error) {
+    const response = (error as { context?: Response }).context;
+
+    if (response instanceof Response) {
+      try {
+        const payload = await response.clone().json();
+
+        if (
+          payload &&
+          typeof payload === "object" &&
+          "error" in payload &&
+          typeof payload.error === "string" &&
+          payload.error.trim()
+        ) {
+          return payload.error.trim();
+        }
+      } catch {
+        // Ignore JSON parsing errors and continue with text fallback.
+      }
+
+      try {
+        const responseText = (await response.clone().text()).trim();
+
+        if (responseText) {
+          return responseText;
+        }
+      } catch {
+        // Ignore text parsing errors and continue with default fallback.
+      }
+    }
+  }
+
+  if (error instanceof Error) {
+    const normalizedMessage = error.message.trim();
+
+    if (
+      normalizedMessage &&
+      normalizedMessage !== "Edge Function returned a non-2xx status code"
+    ) {
+      return normalizedMessage;
+    }
+  }
+
+  return fallbackMessage;
+}
+
 function dispatchPlannerAuthUpdated() {
   if (typeof window === "undefined") {
     return;
@@ -110,6 +164,40 @@ async function refreshPlannerUsersExist() {
 
   plannerUsersExist.value = Boolean(data);
   return plannerUsersExist.value;
+}
+
+async function invokePlannerUserAdmin(body: Record<string, unknown>) {
+  const supabase = getSupabaseClientOrThrow();
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+
+  if (sessionError) {
+    throw sessionError;
+  }
+
+  const accessToken = session?.access_token?.trim();
+
+  if (!accessToken) {
+    throw new Error("No se encontró una sesión válida para gestionar usuarios.");
+  }
+
+  const anonKey = getSupabaseAnonKeyValue();
+
+  if (!anonKey) {
+    throw new Error("Falta la anon key de Supabase para invocar la función.");
+  }
+
+  return supabase.functions.invoke("planner-user-admin", {
+    body: {
+      ...body,
+      accessToken,
+    },
+    headers: {
+      Authorization: `Bearer ${anonKey}`,
+    },
+  });
 }
 
 async function loadCurrentUserProfile(userId: string) {
@@ -421,18 +509,20 @@ export async function createManagedPlannerUser(input: CreatePlannerUserInput) {
     throw new Error("La autenticación requiere Supabase configurado.");
   }
 
-  const supabase = getSupabaseClientOrThrow();
-  const { data, error } = await supabase.functions.invoke("planner-user-admin", {
-    body: {
+  const { data, error } = await invokePlannerUserAdmin({
       action: "create",
       email: normalizeEmail(input.email),
       password: input.password,
       role: input.role,
-    },
   });
 
   if (error) {
-    throw error;
+    throw new Error(
+      await resolveFunctionInvokeErrorMessage(
+        error,
+        "No se pudo crear el usuario. Revisa que la función planner-user-admin esté desplegada y tenga acceso a SUPABASE_SERVICE_ROLE_KEY.",
+      ),
+    );
   }
 
   if (data?.error) {
@@ -450,16 +540,18 @@ export async function deleteManagedPlannerUser(userId: string) {
     throw new Error("La autenticación requiere Supabase configurado.");
   }
 
-  const supabase = getSupabaseClientOrThrow();
-  const { data, error } = await supabase.functions.invoke("planner-user-admin", {
-    body: {
+  const { data, error } = await invokePlannerUserAdmin({
       action: "delete",
       userId,
-    },
   });
 
   if (error) {
-    throw error;
+    throw new Error(
+      await resolveFunctionInvokeErrorMessage(
+        error,
+        "No se pudo dar de baja al usuario. Revisa la función planner-user-admin.",
+      ),
+    );
   }
 
   if (data?.error) {
@@ -478,17 +570,19 @@ export async function setManagedPlannerUserActive(
     throw new Error("La autenticación requiere Supabase configurado.");
   }
 
-  const supabase = getSupabaseClientOrThrow();
-  const { data, error } = await supabase.functions.invoke("planner-user-admin", {
-    body: {
+  const { data, error } = await invokePlannerUserAdmin({
       action: "set-active",
       userId: input.userId,
       isActive: input.isActive,
-    },
   });
 
   if (error) {
-    throw error;
+    throw new Error(
+      await resolveFunctionInvokeErrorMessage(
+        error,
+        "No se pudo actualizar el estado del usuario. Revisa la función planner-user-admin.",
+      ),
+    );
   }
 
   if (data?.error) {

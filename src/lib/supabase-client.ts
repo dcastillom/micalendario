@@ -17,6 +17,10 @@ function getSupabaseAnonKey() {
   return import.meta.env.PUBLIC_SUPABASE_ANON_KEY?.trim() || "";
 }
 
+export function getSupabaseAnonKeyValue() {
+  return getSupabaseAnonKey();
+}
+
 export function hasSupabaseConfig() {
   return Boolean(getSupabaseUrl() && getSupabaseAnonKey());
 }

@@ -57,10 +57,14 @@ Deno.serve(async (request) => {
 
   try {
     const supabaseUrl = getEnvValue("SUPABASE_URL");
+    const anonKey = getEnvValue("SUPABASE_ANON_KEY");
     const serviceRoleKey = getEnvValue("SUPABASE_SERVICE_ROLE_KEY");
     const bearerToken = getBearerToken(request.headers.get("Authorization"));
+    const body = await request.json();
+    const bodyAccessToken = String(body?.accessToken ?? "").trim();
+    const callerAccessToken = bodyAccessToken || bearerToken;
 
-    if (!bearerToken) {
+    if (!callerAccessToken) {
       return jsonResponse({ error: "No se recibió el token del usuario." }, 401);
     }
 
@@ -71,10 +75,22 @@ Deno.serve(async (request) => {
       },
     });
 
+    const callerClient = createClient(supabaseUrl, anonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${callerAccessToken}`,
+        },
+      },
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
+
     const {
       data: { user: callerUser },
       error: callerError,
-    } = await serviceClient.auth.getUser(bearerToken);
+    } = await callerClient.auth.getUser();
 
     if (callerError || !callerUser) {
       return jsonResponse({ error: "No se pudo validar el usuario actual." }, 401);
@@ -96,8 +112,6 @@ Deno.serve(async (request) => {
     if (!callerProfile?.is_active || callerProfile.role !== "admin") {
       return jsonResponse({ error: "Solo un admin puede gestionar usuarios." }, 403);
     }
-
-    const body = await request.json();
     const action = String(body?.action ?? "").trim();
 
     if (action === "create") {

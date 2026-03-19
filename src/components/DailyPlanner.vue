@@ -650,6 +650,7 @@ function resetPlannerDataState() {
   savingState.value = "idle";
   hydrating.value = false;
   suppressAutoSave.value = false;
+  applyDefaultNavigationState();
   dayRecord.value = createEmptyDay(selectedDate.value);
   monthRecords.value = {};
   allRecords.value = {};
@@ -804,14 +805,45 @@ function focusEntryField(id: string) {
   }
 }
 
-function applyInitialNavigationState() {
+function applyDefaultNavigationState() {
+  selectedDate.value = todayKey();
+  viewMode.value = "month";
+  referenceFilter.value = "";
+  pendingEntryId = "";
+}
+
+function clearInitialNavigationParams() {
   if (typeof window === "undefined") {
     return;
+  }
+
+  const url = new URL(window.location.href);
+  const hadNavigationParams =
+    url.searchParams.has("date") || url.searchParams.has("entry");
+
+  if (!hadNavigationParams) {
+    return;
+  }
+
+  url.searchParams.delete("date");
+  url.searchParams.delete("entry");
+
+  const nextSearch = url.searchParams.toString();
+  const nextUrl = `${url.pathname}${nextSearch ? `?${nextSearch}` : ""}${url.hash}`;
+
+  window.history.replaceState(window.history.state, "", nextUrl);
+}
+
+function applyInitialNavigationState() {
+  if (typeof window === "undefined") {
+    return false;
   }
 
   const params = new URLSearchParams(window.location.search);
   const dateParam = params.get("date")?.trim() ?? "";
   const entryParam = params.get("entry")?.trim() ?? "";
+
+  applyDefaultNavigationState();
 
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
     selectedDate.value = dateParam;
@@ -819,6 +851,8 @@ function applyInitialNavigationState() {
   }
 
   pendingEntryId = entryParam;
+  clearInitialNavigationParams();
+  return viewMode.value === "day";
 }
 
 async function flushPendingDaySave() {
@@ -1591,7 +1625,7 @@ onBeforeUnmount(() => {
       </section>
     </div>
 
-    <section v-else class="planner-sheet">
+    <section v-if="!plannerAuthState.authReady.value" class="planner-sheet">
       <p class="sidebar-copy">Comprobando acceso…</p>
     </section>
   </main>
