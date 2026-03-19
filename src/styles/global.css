@@ -33,6 +33,8 @@ body {
 }
 
 body {
+  position: relative;
+  isolation: isolate;
   color: var(--ink);
   background:
     radial-gradient(
@@ -46,6 +48,7 @@ body {
 body::before {
   position: fixed;
   inset: 0;
+  z-index: 0;
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.13) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.13) 1px, transparent 1px);
@@ -67,6 +70,8 @@ button {
 }
 
 .planner-app {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   min-height: 100vh;
@@ -389,6 +394,12 @@ button {
   min-width: 0;
 }
 
+.company-header__menu-shell {
+  position: relative;
+  display: none;
+  flex: 0 0 auto;
+}
+
 .company-header__user-meta {
   display: grid;
   justify-items: end;
@@ -500,10 +511,90 @@ button {
   padding: 0;
 }
 
+.company-header__menu-toggle {
+  display: none;
+}
+
 .company-header__action-icon {
   width: 24px;
   height: 24px;
   display: block;
+  flex: 0 0 auto;
+}
+
+.company-header__menu-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 25;
+  display: grid;
+  gap: 8px;
+  min-width: 240px;
+  max-width: min(280px, calc(100vw - 40px));
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.56);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96),
+    rgba(245, 237, 225, 0.98)
+  );
+  box-shadow:
+    inset 0 0 0 1px rgba(46, 64, 55, 0.06),
+    0 18px 40px rgba(62, 46, 24, 0.16);
+}
+
+.company-header__menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  border: none;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px rgba(46, 64, 55, 0.08);
+  padding: 10px 14px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease;
+}
+
+.company-header__menu-item:hover {
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+}
+
+.company-header__menu-item--filters {
+  background: rgba(31, 107, 90, 0.12);
+  color: var(--accent-strong);
+  box-shadow:
+    inset 0 0 0 1px rgba(31, 107, 90, 0.24),
+    0 8px 18px rgba(31, 107, 90, 0.08);
+}
+
+.company-header__menu-item--filters:hover {
+  background: rgba(31, 107, 90, 0.18);
+  color: var(--accent-strong);
+}
+
+.company-header__menu-item--logout {
+  background: rgba(88, 61, 28, 0.08);
+}
+
+.company-header__menu-item--logout:hover {
+  background: rgba(88, 61, 28, 0.14);
+}
+
+.company-header__menu-item-icon {
+  width: 20px;
+  height: 20px;
   flex: 0 0 auto;
 }
 
@@ -1753,6 +1844,8 @@ button {
 }
 
 .reports-page {
+  position: relative;
+  z-index: 1;
   display: grid;
   min-height: 100vh;
   /* padding: 0 24px 24px; */
@@ -2113,30 +2206,42 @@ button {
 
 @media (max-width: 1320px) {
   .company-header__body--with-actions {
-    grid-template-columns: 1fr;
-    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 16px;
+    align-items: start;
   }
 
   .company-header__actions {
-    justify-content: flex-start;
+    justify-content: flex-end;
+    align-self: start;
   }
 
   .company-header__actions-stack,
   .company-header__user-meta {
-    width: 100%;
-    align-items: flex-start;
-    justify-items: start;
+    width: auto;
+    align-items: flex-end;
+    justify-items: end;
   }
 
   .company-header__button-group {
-    width: 100%;
-    justify-content: flex-start;
+    display: none;
+    width: auto;
+    justify-content: flex-end;
+  }
+
+  .company-header__menu-shell {
+    display: block;
+    justify-self: end;
+  }
+
+  .company-header__menu-toggle {
+    display: inline-grid;
   }
 }
 
 @media (max-width: 1080px) {
   .company-header__actions-stack {
-    justify-items: start;
+    justify-items: end;
   }
 
   .company-header__agenda-tools {
@@ -2342,7 +2447,7 @@ button {
   }
 
   .company-header__actions {
-    justify-content: flex-start;
+    justify-content: flex-end;
   }
 
   .sheet-header h2 {

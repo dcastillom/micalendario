@@ -46,6 +46,8 @@ function normalizePathname(pathname: string) {
 const plannerSettings = ref<PlannerSettings>(createDefaultPlannerSettings());
 const currentPathname = ref(normalizePathname(props.initialPathname));
 const headerUserProfile = ref<PlannerUserProfile | null>(null);
+const headerMenuRef = ref<HTMLElement | null>(null);
+const headerMenuOpen = ref(false);
 const brandEditorOpen = ref(false);
 const asignadoEditorOpen = ref(false);
 const usersEditorOpen = ref(false);
@@ -113,11 +115,14 @@ const asignadoButtonLabel = computed(() =>
 const usersButtonLabel = computed(() =>
   usersEditorOpen.value ? "Cerrar usuarios" : "Gestionar usuarios",
 );
+const headerMenuButtonLabel = computed(() =>
+  headerMenuOpen.value ? "Cerrar menú" : "Abrir menú",
+);
 const contextualHeaderActionHref = computed(() =>
   isReportsRoute.value ? "/" : "/filtros",
 );
 const contextualHeaderActionLabel = computed(() =>
-  isReportsRoute.value ? "Volver a la agenda" : "Ir a filtros e impresión",
+  isReportsRoute.value ? "Volver a la agenda" : "Ir a filtros",
 );
 const closeIconPaths = ["M6 6 18 18", "M18 6 6 18"];
 const usersIconPaths = computed(() =>
@@ -150,6 +155,9 @@ const brandIconPaths = computed(() =>
         "M4 10h16",
         "M8 14h8",
       ],
+);
+const headerMenuIconPaths = computed(() =>
+  headerMenuOpen.value ? closeIconPaths : ["M4 7h16", "M4 12h16", "M4 17h16"],
 );
 const logoutIconPaths = [
   "M10 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19H10",
@@ -207,6 +215,15 @@ function closeAdminEditors() {
   brandEditorOpen.value = false;
   asignadoEditorOpen.value = false;
   usersEditorOpen.value = false;
+  headerMenuOpen.value = false;
+}
+
+function closeHeaderMenu() {
+  headerMenuOpen.value = false;
+}
+
+function toggleHeaderMenu() {
+  headerMenuOpen.value = !headerMenuOpen.value;
 }
 
 async function refreshHeaderAuthState() {
@@ -332,11 +349,13 @@ function handlePlannerSettingsUpdated(event: Event) {
 
 function handleAstroAfterSwap() {
   syncCurrentPathname();
+  closeHeaderMenu();
   void refreshHeaderAuthState();
 }
 
 function handleAstroPageLoad() {
   syncCurrentPathname();
+  closeHeaderMenu();
   void refreshHeaderAuthState();
   if (isAuthenticated.value) {
     void refreshPlannerSettings();
@@ -345,6 +364,26 @@ function handleAstroPageLoad() {
 
 function handleWindowFocus() {
   void refreshHeaderAuthState();
+}
+
+function handleDocumentPointerDown(event: Event) {
+  if (
+    !headerMenuOpen.value ||
+    !(event.target instanceof Node) ||
+    !headerMenuRef.value
+  ) {
+    return;
+  }
+
+  if (!headerMenuRef.value.contains(event.target)) {
+    closeHeaderMenu();
+  }
+}
+
+function handleWindowKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape") {
+    closeHeaderMenu();
+  }
 }
 
 function handlePlannerAuthUpdated() {
@@ -364,6 +403,7 @@ function handleBrandButtonClick() {
     return;
   }
 
+  closeHeaderMenu();
   brandEditorOpen.value = !brandEditorOpen.value;
   asignadoEditorOpen.value = false;
   usersEditorOpen.value = false;
@@ -379,6 +419,7 @@ function handleAsignadoButtonClick() {
     return;
   }
 
+  closeHeaderMenu();
   asignadoEditorOpen.value = !asignadoEditorOpen.value;
   brandEditorOpen.value = false;
   usersEditorOpen.value = false;
@@ -395,6 +436,7 @@ function handleUsersButtonClick() {
     return;
   }
 
+  closeHeaderMenu();
   usersEditorOpen.value = !usersEditorOpen.value;
   brandEditorOpen.value = false;
   asignadoEditorOpen.value = false;
@@ -718,7 +760,9 @@ onMounted(() => {
   });
   document.addEventListener("astro:after-swap", handleAstroAfterSwap);
   document.addEventListener("astro:page-load", handleAstroPageLoad);
+  document.addEventListener("pointerdown", handleDocumentPointerDown);
   window.addEventListener("focus", handleWindowFocus);
+  window.addEventListener("keydown", handleWindowKeydown);
   window.addEventListener(PLANNER_AUTH_UPDATED_EVENT, handlePlannerAuthUpdated);
   window.addEventListener(
     PLANNER_SETTINGS_UPDATED_EVENT,
@@ -761,7 +805,9 @@ watch(canEditBranding, (nextCanEditBranding) => {
 onBeforeUnmount(() => {
   document.removeEventListener("astro:after-swap", handleAstroAfterSwap);
   document.removeEventListener("astro:page-load", handleAstroPageLoad);
+  document.removeEventListener("pointerdown", handleDocumentPointerDown);
   window.removeEventListener("focus", handleWindowFocus);
+  window.removeEventListener("keydown", handleWindowKeydown);
   window.removeEventListener(
     PLANNER_AUTH_UPDATED_EVENT,
     handlePlannerAuthUpdated,
@@ -878,7 +924,7 @@ onBeforeUnmount(() => {
                 </svg>
               </button>
               <a
-                class="ghost-link company-header__action-button company-header__action-button--filters company-header__action-button--icon"
+                class="ghost-link company-header__action-button company-header__action-button--icon"
                 :aria-label="contextualHeaderActionLabel"
                 :href="contextualHeaderActionHref"
                 :title="contextualHeaderActionLabel"
@@ -924,6 +970,160 @@ onBeforeUnmount(() => {
                   />
                 </svg>
               </button>
+            </div>
+            <div ref="headerMenuRef" class="company-header__menu-shell">
+              <button
+                class="company-header__action-button company-header__action-button--icon company-header__menu-toggle"
+                :class="{
+                  'company-header__action-button--active': headerMenuOpen,
+                }"
+                type="button"
+                :aria-label="headerMenuButtonLabel"
+                :title="headerMenuButtonLabel"
+                @click="toggleHeaderMenu"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="company-header__action-icon"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    v-for="path in headerMenuIconPaths"
+                    :key="path"
+                    :d="path"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.9"
+                  />
+                </svg>
+              </button>
+
+              <div v-if="headerMenuOpen" class="company-header__menu-dropdown">
+                <button
+                  v-if="canManageUsers"
+                  class="company-header__menu-item"
+                  type="button"
+                  @click="handleUsersButtonClick"
+                >
+                  <svg
+                    aria-hidden="true"
+                    class="company-header__menu-item-icon"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      v-for="path in usersIconPaths"
+                      :key="path"
+                      :d="path"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.9"
+                    />
+                  </svg>
+                  <span>{{ usersButtonLabel }}</span>
+                </button>
+
+                <button
+                  v-if="canEditBranding"
+                  class="company-header__menu-item"
+                  type="button"
+                  @click="handleAsignadoButtonClick"
+                >
+                  <svg
+                    aria-hidden="true"
+                    class="company-header__menu-item-icon"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      v-for="path in asignadoIconPaths"
+                      :key="path"
+                      :d="path"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.9"
+                    />
+                  </svg>
+                  <span>{{ asignadoButtonLabel }}</span>
+                </button>
+
+                <button
+                  v-if="canEditBranding"
+                  class="company-header__menu-item"
+                  type="button"
+                  @click="handleBrandButtonClick"
+                >
+                  <svg
+                    aria-hidden="true"
+                    class="company-header__menu-item-icon"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      v-for="path in brandIconPaths"
+                      :key="path"
+                      :d="path"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.9"
+                    />
+                  </svg>
+                  <span>{{ brandButtonLabel }}</span>
+                </button>
+
+                <a
+                  class="company-header__menu-item"
+                  :href="contextualHeaderActionHref"
+                  @click="closeHeaderMenu"
+                >
+                  <svg
+                    aria-hidden="true"
+                    class="company-header__menu-item-icon"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      v-for="path in contextualHeaderIconPaths"
+                      :key="path"
+                      :d="path"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.9"
+                    />
+                  </svg>
+                  <span>{{ contextualHeaderActionLabel }}</span>
+                </a>
+
+                <button
+                  class="company-header__menu-item company-header__menu-item--logout"
+                  type="button"
+                  @click="handleSignOut"
+                >
+                  <svg
+                    aria-hidden="true"
+                    class="company-header__menu-item-icon"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      v-for="path in logoutIconPaths"
+                      :key="path"
+                      :d="path"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.9"
+                    />
+                  </svg>
+                  <span>Salir</span>
+                </button>
+              </div>
             </div>
           </div>
         </template>
