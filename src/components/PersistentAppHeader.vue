@@ -119,6 +119,43 @@ const contextualHeaderActionHref = computed(() =>
 const contextualHeaderActionLabel = computed(() =>
   isReportsRoute.value ? "Volver a la agenda" : "Ir a filtros e impresión",
 );
+const closeIconPaths = ["M6 6 18 18", "M18 6 6 18"];
+const usersIconPaths = computed(() =>
+  usersEditorOpen.value
+    ? closeIconPaths
+    : [
+        "M15 19v-1.5A3.5 3.5 0 0 0 11.5 14H6.5A3.5 3.5 0 0 0 3 17.5V19",
+        "M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z",
+        "M18 8v6",
+        "M21 11h-6",
+      ],
+);
+const asignadoIconPaths = computed(() =>
+  asignadoEditorOpen.value
+    ? closeIconPaths
+    : [
+        "M10 6h10",
+        "M10 12h10",
+        "M10 18h10",
+        "M4 6.5 5.75 8.25 8 6",
+        "M4 12.5 5.75 14.25 8 12",
+        "M4 18.5 5.75 20.25 8 18",
+      ],
+);
+const brandIconPaths = computed(() =>
+  brandEditorOpen.value
+    ? closeIconPaths
+    : [
+        "M4 7.5A1.5 1.5 0 0 1 5.5 6h13A1.5 1.5 0 0 1 20 7.5v9A1.5 1.5 0 0 1 18.5 18h-13A1.5 1.5 0 0 1 4 16.5z",
+        "M4 10h16",
+        "M8 14h8",
+      ],
+);
+const logoutIconPaths = [
+  "M10 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19H10",
+  "M13 8l4 4-4 4",
+  "M17 12H9",
+];
 const contextualHeaderIconPaths = computed(() =>
   isReportsRoute.value
     ? ["M4 10.5 12 4l8 6.5v8.5a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"]
@@ -758,27 +795,87 @@ onBeforeUnmount(() => {
             <div class="company-header__button-group">
               <button
                 v-if="canManageUsers"
-                class="company-header__action-button"
+                class="company-header__action-button company-header__action-button--icon"
+                :class="{
+                  'company-header__action-button--active': usersEditorOpen,
+                }"
                 type="button"
+                :aria-label="usersButtonLabel"
+                :title="usersButtonLabel"
                 @click="handleUsersButtonClick"
               >
-                {{ usersButtonLabel }}
+                <svg
+                  aria-hidden="true"
+                  class="company-header__action-icon"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    v-for="path in usersIconPaths"
+                    :key="path"
+                    :d="path"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.9"
+                  />
+                </svg>
               </button>
               <button
                 v-if="canEditBranding"
-                class="company-header__action-button"
+                class="company-header__action-button company-header__action-button--icon"
+                :class="{
+                  'company-header__action-button--active': asignadoEditorOpen,
+                }"
                 type="button"
+                :aria-label="asignadoButtonLabel"
+                :title="asignadoButtonLabel"
                 @click="handleAsignadoButtonClick"
               >
-                {{ asignadoButtonLabel }}
+                <svg
+                  aria-hidden="true"
+                  class="company-header__action-icon"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    v-for="path in asignadoIconPaths"
+                    :key="path"
+                    :d="path"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.9"
+                  />
+                </svg>
               </button>
               <button
                 v-if="canEditBranding"
-                class="company-header__action-button"
+                class="company-header__action-button company-header__action-button--icon"
+                :class="{
+                  'company-header__action-button--active': brandEditorOpen,
+                }"
                 type="button"
+                :aria-label="brandButtonLabel"
+                :title="brandButtonLabel"
                 @click="handleBrandButtonClick"
               >
-                {{ brandButtonLabel }}
+                <svg
+                  aria-hidden="true"
+                  class="company-header__action-icon"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    v-for="path in brandIconPaths"
+                    :key="path"
+                    :d="path"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.9"
+                  />
+                </svg>
               </button>
               <a
                 class="ghost-link company-header__action-button company-header__action-button--filters company-header__action-button--icon"
@@ -804,11 +901,28 @@ onBeforeUnmount(() => {
                 </svg>
               </a>
               <button
-                class="company-header__action-button company-header__action-button--logout"
+                class="company-header__action-button company-header__action-button--logout company-header__action-button--icon"
                 type="button"
+                aria-label="Salir"
+                title="Salir"
                 @click="handleSignOut"
               >
-                Salir
+                <svg
+                  aria-hidden="true"
+                  class="company-header__action-icon"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    v-for="path in logoutIconPaths"
+                    :key="path"
+                    :d="path"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.9"
+                  />
+                </svg>
               </button>
             </div>
           </div>

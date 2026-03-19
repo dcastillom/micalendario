@@ -468,6 +468,19 @@ button {
   color: var(--accent-strong);
 }
 
+.company-header__action-button--active {
+  background: rgba(31, 107, 90, 0.14);
+  color: var(--accent-strong);
+  box-shadow:
+    inset 0 0 0 1px rgba(31, 107, 90, 0.24),
+    0 8px 18px rgba(31, 107, 90, 0.08);
+}
+
+.company-header__action-button--active:hover {
+  background: rgba(31, 107, 90, 0.18);
+  color: var(--accent-strong);
+}
+
 .company-header__action-button--logout {
   background: rgba(88, 61, 28, 0.08);
   color: var(--ink);
@@ -478,6 +491,9 @@ button {
 }
 
 .company-header__action-button--icon {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
   width: 50px;
   min-width: 50px;
   min-height: 50px;
@@ -485,9 +501,10 @@ button {
 }
 
 .company-header__action-icon {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   display: block;
+  flex: 0 0 auto;
 }
 
 .company-header__action-button:focus {
