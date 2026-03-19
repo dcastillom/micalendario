@@ -10,13 +10,18 @@ import {
 interface Props {
   title?: string;
   subtitle?: string;
+  embedded?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   title: "Acceso a la app",
   subtitle:
     "Inicia sesión para entrar en la agenda o en filtros con los permisos de tu usuario.",
+  embedded: false,
 });
+const emit = defineEmits<{
+  success: [];
+}>();
 
 const email = ref("");
 const password = ref("");
@@ -41,10 +46,12 @@ async function submitCredentials() {
 
     if (isBootstrapMode.value) {
       await bootstrapFirstAdmin(email.value, password.value);
+      emit("success");
       return;
     }
 
     await signInWithPassword(email.value, password.value);
+    emit("success");
   } catch (error) {
     formError.value =
       error instanceof Error
@@ -62,8 +69,11 @@ onMounted(() => {
 
 <template>
   <section
-    class="planner-sheet"
-    :class="{ 'auth-card': !plannerAuthState.isAuthenticated.value }"
+    :class="
+      props.embedded
+        ? 'auth-panel'
+        : ['planner-sheet', { 'auth-card': !plannerAuthState.isAuthenticated.value }]
+    "
   >
     <div v-if="!plannerAuthState.authReady.value" class="auth-card__body">
       <h2>{{ title }}</h2>

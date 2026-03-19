@@ -7,6 +7,7 @@ import {
 } from "../lib/planner-client";
 import { getSupabaseClient, hasSupabaseConfig } from "../lib/supabase-client";
 import {
+  clearPlannerAuthError,
   createManagedPlannerUser,
   deleteManagedPlannerUser,
   ensurePlannerAuthInitialized,
@@ -25,6 +26,7 @@ import type {
   PlannerSettings,
   PlannerUserProfile,
 } from "../lib/planner-types";
+import AuthAccessCard from "./AuthAccessCard.vue";
 import CompanyHeader from "./CompanyHeader.vue";
 
 interface Props {
@@ -48,6 +50,7 @@ const currentPathname = ref(normalizePathname(props.initialPathname));
 const headerUserProfile = ref<PlannerUserProfile | null>(null);
 const headerMenuRef = ref<HTMLElement | null>(null);
 const headerMenuOpen = ref(false);
+const loginDialogOpen = ref(false);
 const brandEditorOpen = ref(false);
 const asignadoEditorOpen = ref(false);
 const usersEditorOpen = ref(false);
@@ -94,7 +97,11 @@ const canEditBranding = computed(
     canManageSettings.value && (isAgendaRoute.value || isReportsRoute.value),
 );
 const canRenderHeaderActions = computed(
-  () => isAuthenticated.value && (isAgendaRoute.value || isReportsRoute.value),
+  () => isAgendaRoute.value || isReportsRoute.value,
+);
+const canShowAuthAction = computed(
+  () =>
+    hasSupabaseConfig() && (isAgendaRoute.value || isReportsRoute.value),
 );
 const displayedSettings = computed<PlannerSettings>(() =>
   brandEditorOpen.value
@@ -159,11 +166,27 @@ const brandIconPaths = computed(() =>
 const headerMenuIconPaths = computed(() =>
   headerMenuOpen.value ? closeIconPaths : ["M4 7h16", "M4 12h16", "M4 17h16"],
 );
+const loginIconPaths = [
+  "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z",
+  "M5 20a7 7 0 0 1 14 0",
+];
 const logoutIconPaths = [
   "M10 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19H10",
   "M13 8l4 4-4 4",
   "M17 12H9",
 ];
+const authActionLabel = computed(() => {
+  if (isAuthenticated.value) {
+    return "Salir";
+  }
+
+  return plannerAuthState.plannerUsersExist.value === false
+    ? "Crear admin inicial"
+    : "Iniciar sesión";
+});
+const authActionIconPaths = computed(() =>
+  isAuthenticated.value ? logoutIconPaths : loginIconPaths,
+);
 const contextualHeaderIconPaths = computed(() =>
   isReportsRoute.value
     ? ["M4 10.5 12 4l8 6.5v8.5a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"]
@@ -222,8 +245,27 @@ function closeHeaderMenu() {
   headerMenuOpen.value = false;
 }
 
+function openLoginDialog() {
+  closeHeaderMenu();
+  clearPlannerAuthError();
+  loginDialogOpen.value = true;
+}
+
+function closeLoginDialog() {
+  loginDialogOpen.value = false;
+}
+
 function toggleHeaderMenu() {
   headerMenuOpen.value = !headerMenuOpen.value;
+}
+
+function handleAuthActionClick() {
+  if (isAuthenticated.value) {
+    void handleSignOut();
+    return;
+  }
+
+  openLoginDialog();
 }
 
 async function refreshHeaderAuthState() {
@@ -289,13 +331,6 @@ function syncCurrentPathname() {
 }
 
 async function refreshPlannerSettings() {
-  if (!isAuthenticated.value) {
-    plannerSettings.value = createDefaultPlannerSettings();
-    syncBrandForm(plannerSettings.value);
-    syncAsignadoDraft(plannerSettings.value);
-    return;
-  }
-
   try {
     const settings = await loadSettings();
     plannerSettings.value = settings;
@@ -350,16 +385,16 @@ function handlePlannerSettingsUpdated(event: Event) {
 function handleAstroAfterSwap() {
   syncCurrentPathname();
   closeHeaderMenu();
+  closeLoginDialog();
   void refreshHeaderAuthState();
+  void refreshPlannerSettings();
 }
 
 function handleAstroPageLoad() {
   syncCurrentPathname();
   closeHeaderMenu();
   void refreshHeaderAuthState();
-  if (isAuthenticated.value) {
-    void refreshPlannerSettings();
-  }
+  void refreshPlannerSettings();
 }
 
 function handleWindowFocus() {
@@ -389,8 +424,12 @@ function handleWindowKeydown(event: KeyboardEvent) {
 function handlePlannerAuthUpdated() {
   void refreshHeaderAuthState().then(() => {
     if (isAuthenticated.value) {
-      void refreshPlannerSettings();
+      closeLoginDialog();
+    }
 
+    void refreshPlannerSettings();
+
+    if (isAuthenticated.value) {
       if (usersEditorOpen.value && canManageUsers.value) {
         void refreshManagedUsers();
       }
@@ -753,9 +792,7 @@ onMounted(() => {
   resetUserForm();
   void ensurePlannerAuthInitialized().then(() => {
     void refreshHeaderAuthState().then(() => {
-      if (isAuthenticated.value) {
-        void refreshPlannerSettings();
-      }
+      void refreshPlannerSettings();
     });
   });
   document.addEventListener("astro:after-swap", handleAstroAfterSwap);
@@ -776,9 +813,8 @@ watch(isAuthenticated, (nextIsAuthenticated) => {
     userEditorError.value = "";
     userEditorNotice.value = "";
     resetUserForm();
-    plannerSettings.value = createDefaultPlannerSettings();
-    syncBrandForm(plannerSettings.value);
-    syncAsignadoDraft(plannerSettings.value);
+    closeLoginDialog();
+    void refreshPlannerSettings();
     return;
   }
 
@@ -839,6 +875,34 @@ onBeforeUnmount(() => {
               <span class="company-header__user-role">{{ currentUserRoleLabel }}</span>
             </div> -->
             <div class="company-header__button-group">
+              <button
+                v-if="canShowAuthAction"
+                class="company-header__action-button company-header__action-button--icon"
+                :class="{
+                  'company-header__action-button--logout': isAuthenticated,
+                }"
+                type="button"
+                :aria-label="authActionLabel"
+                :title="authActionLabel"
+                @click="handleAuthActionClick"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="company-header__action-icon"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    v-for="path in authActionIconPaths"
+                    :key="path"
+                    :d="path"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.9"
+                  />
+                </svg>
+              </button>
               <button
                 v-if="canManageUsers"
                 class="company-header__action-button company-header__action-button--icon"
@@ -946,30 +1010,6 @@ onBeforeUnmount(() => {
                   />
                 </svg>
               </a>
-              <button
-                class="company-header__action-button company-header__action-button--logout company-header__action-button--icon"
-                type="button"
-                aria-label="Salir"
-                title="Salir"
-                @click="handleSignOut"
-              >
-                <svg
-                  aria-hidden="true"
-                  class="company-header__action-icon"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    v-for="path in logoutIconPaths"
-                    :key="path"
-                    :d="path"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.9"
-                  />
-                </svg>
-              </button>
             </div>
             <div ref="headerMenuRef" class="company-header__menu-shell">
               <button
@@ -1001,6 +1041,34 @@ onBeforeUnmount(() => {
               </button>
 
               <div v-if="headerMenuOpen" class="company-header__menu-dropdown">
+                <button
+                  v-if="canShowAuthAction"
+                  class="company-header__menu-item"
+                  :class="{
+                    'company-header__menu-item--logout': isAuthenticated,
+                  }"
+                  type="button"
+                  @click="handleAuthActionClick"
+                >
+                  <svg
+                    aria-hidden="true"
+                    class="company-header__menu-item-icon"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      v-for="path in authActionIconPaths"
+                      :key="path"
+                      :d="path"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.9"
+                    />
+                  </svg>
+                  <span>{{ authActionLabel }}</span>
+                </button>
+
                 <button
                   v-if="canManageUsers"
                   class="company-header__menu-item"
@@ -1099,35 +1167,31 @@ onBeforeUnmount(() => {
                   </svg>
                   <span>{{ contextualHeaderActionLabel }}</span>
                 </a>
-
-                <button
-                  class="company-header__menu-item company-header__menu-item--logout"
-                  type="button"
-                  @click="handleSignOut"
-                >
-                  <svg
-                    aria-hidden="true"
-                    class="company-header__menu-item-icon"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      v-for="path in logoutIconPaths"
-                      :key="path"
-                      :d="path"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.9"
-                    />
-                  </svg>
-                  <span>Salir</span>
-                </button>
               </div>
             </div>
           </div>
         </template>
       </CompanyHeader>
+
+      <div
+        v-if="loginDialogOpen"
+        class="confirm-overlay"
+        @click.self="closeLoginDialog"
+      >
+        <section
+          class="confirm-dialog confirm-dialog--auth"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="login-dialog-title"
+        >
+          <AuthAccessCard
+            embedded
+            title="Acceso"
+            subtitle="Inicia sesión para desbloquear edición y administración."
+            @success="closeLoginDialog"
+          />
+        </section>
+      </div>
 
       <section v-if="canManageUsers && usersEditorOpen" class="users-editor">
         <div class="users-editor__header">

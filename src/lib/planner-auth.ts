@@ -149,6 +149,10 @@ function dispatchPlannerAuthUpdated() {
   );
 }
 
+export function clearPlannerAuthError() {
+  authError.value = "";
+}
+
 async function refreshPlannerUsersExist() {
   if (!hasSupabaseConfig()) {
     plannerUsersExist.value = null;
@@ -605,7 +609,12 @@ export const plannerAuthState = {
   isAuthenticated: computed(() => authStatus.value === "authenticated"),
   isAdmin: computed(() => currentUserProfile.value?.role === "admin"),
   isEditor: computed(() => currentUserProfile.value?.role === "editor"),
-  isViewer: computed(() => currentUserProfile.value?.role === "viewer"),
+  isViewer: computed(
+    () =>
+      currentUserProfile.value?.role === "viewer" ||
+      authStatus.value === "unauthenticated" ||
+      authStatus.value === "unavailable",
+  ),
   canManageSettings: computed(() => currentUserProfile.value?.role === "admin"),
   canManageUsers: computed(() => currentUserProfile.value?.role === "admin"),
   canEditReports: computed(
@@ -613,10 +622,5 @@ export const plannerAuthState = {
       currentUserProfile.value?.role === "admin" ||
       currentUserProfile.value?.role === "editor",
   ),
-  canViewReports: computed(
-    () =>
-      currentUserProfile.value?.role === "admin" ||
-      currentUserProfile.value?.role === "editor" ||
-      currentUserProfile.value?.role === "viewer",
-  ),
+  canViewReports: computed(() => authStatus.value !== "error"),
 };

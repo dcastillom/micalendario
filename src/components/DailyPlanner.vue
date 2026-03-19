@@ -7,10 +7,10 @@ import {
   ref,
   watch,
 } from "vue";
-import AuthAccessCard from "./AuthAccessCard.vue";
 import LocalityAutocomplete from "./LocalityAutocomplete.vue";
 import {
   detectStorageMode,
+  hasSupabaseConfig,
   type StorageModeStatus,
 } from "../lib/supabase-client";
 import {
@@ -680,7 +680,9 @@ async function initializePlannerDataForSession() {
   } catch (error) {
     console.error("No se pudo inicializar la agenda.", error);
     plannerLoadError.value =
-      "No se pudo cargar la agenda para el usuario actual.";
+      hasSupabaseConfig() && !plannerAuthState.isAuthenticated.value
+        ? "No se pudo cargar la agenda en modo solo lectura. Si usas Supabase, aplica el SQL actualizado para permitir lectura pública de planner_days y planner_settings."
+        : "No se pudo cargar la agenda para el usuario actual.";
   }
 }
 
@@ -1070,13 +1072,8 @@ watch(
 
 watch(
   [plannerAuthState.authReady, plannerAuthState.isAuthenticated],
-  ([authReady, isAuthenticated]) => {
+  ([authReady]) => {
     if (!authReady) {
-      return;
-    }
-
-    if (!isAuthenticated) {
-      resetPlannerDataState();
       return;
     }
 
@@ -1087,6 +1084,19 @@ watch(
     void initializePlannerDataForSession();
   },
 );
+
+watch(canManageApp, (nextCanManageApp) => {
+  if (!hasInitialized.value) {
+    return;
+  }
+
+  if (nextCanManageApp) {
+    startBackupScheduleIfAllowed();
+    return;
+  }
+
+  stopBackupSchedule();
+});
 
 onMounted(() => {
   window.addEventListener("keydown", handleWindowKeydown);
@@ -1102,9 +1112,7 @@ onMounted(() => {
   );
   applyInitialNavigationState();
   void ensurePlannerAuthInitialized().then(() => {
-    if (plannerAuthState.isAuthenticated.value) {
-      void initializePlannerDataForSession();
-    }
+    void initializePlannerDataForSession();
   });
 });
 
@@ -1129,19 +1137,7 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="planner-app">
-    <AuthAccessCard
-      v-if="
-        plannerAuthState.authReady.value &&
-        !plannerAuthState.isAuthenticated.value
-      "
-      title="Acceso a la agenda"
-      subtitle="Inicia sesión para entrar en la agenda diaria."
-    />
-
-    <section
-      v-else-if="plannerAuthState.isAuthenticated.value"
-      class="planner-sheet"
-    >
+    <section v-if="plannerAuthState.authReady.value" class="planner-sheet">
       <p v-if="plannerLoadError" class="sheet-alert sheet-alert--error">
         {{ plannerLoadError }}
       </p>

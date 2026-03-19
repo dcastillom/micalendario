@@ -154,6 +154,8 @@ revoke all on table public.planner_settings from anon, authenticated;
 revoke all on table public.planner_users from anon, authenticated;
 
 grant usage on schema public to anon, authenticated;
+grant select on public.planner_days to anon;
+grant select on public.planner_settings to anon;
 grant select, insert, update, delete on public.planner_days to authenticated;
 grant select, update on public.planner_settings to authenticated;
 grant select on public.planner_users to authenticated;
@@ -161,6 +163,13 @@ grant execute on function public.is_active_planner_user() to authenticated;
 grant execute on function public.current_planner_role() to authenticated;
 grant execute on function public.planner_has_users() to anon, authenticated;
 grant execute on function public.planner_bootstrap_admin() to authenticated;
+
+drop policy if exists planner_days_select_public on public.planner_days;
+create policy planner_days_select_public
+on public.planner_days
+for select
+to anon
+using (true);
 
 drop policy if exists planner_days_select_active_users on public.planner_days;
 create policy planner_days_select_active_users
@@ -176,6 +185,13 @@ for all
 to authenticated
 using (public.current_planner_role() in ('admin', 'editor'))
 with check (public.current_planner_role() in ('admin', 'editor'));
+
+drop policy if exists planner_settings_select_public on public.planner_settings;
+create policy planner_settings_select_public
+on public.planner_settings
+for select
+to anon
+using (true);
 
 drop policy if exists planner_settings_select_active_users on public.planner_settings;
 create policy planner_settings_select_active_users

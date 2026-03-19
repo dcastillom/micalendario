@@ -2,13 +2,13 @@
 import { navigate } from "astro:transitions/client";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import * as xlsxModule from "xlsx";
-import AuthAccessCard from "./AuthAccessCard.vue";
 import CompanyHeader from "./CompanyHeader.vue";
 import {
   createDefaultPlannerSettings,
   loadAllDays,
   loadSettings,
 } from "../lib/planner-client";
+import { hasSupabaseConfig } from "../lib/supabase-client";
 import {
   ensurePlannerAuthInitialized,
   plannerAuthState,
@@ -711,7 +711,10 @@ async function loadReports() {
     );
   } catch (error) {
     console.error(error);
-    loadError.value = "No se pudieron cargar los informes guardados.";
+    loadError.value =
+      hasSupabaseConfig() && !plannerAuthState.isAuthenticated.value
+        ? "No se pudieron cargar los informes en modo solo lectura. Si usas Supabase, aplica el SQL actualizado para permitir lectura pública de planner_days y planner_settings."
+        : "No se pudieron cargar los informes guardados.";
     plannerSettingsReady.value = true;
   } finally {
     loading.value = false;
@@ -734,14 +737,8 @@ onMounted(() => {
     handlePlannerSettingsUpdated,
   );
   void ensurePlannerAuthInitialized().then(() => {
-    if (plannerAuthState.isAuthenticated.value) {
-      reportsLoadedForSession.value = true;
-      void loadReports();
-      return;
-    }
-
-    loading.value = false;
-    plannerSettingsReady.value = true;
+    reportsLoadedForSession.value = true;
+    void loadReports();
   });
 });
 
@@ -759,18 +756,8 @@ watch(filteredReports, () => {
 
 watch(
   [plannerAuthState.authReady, plannerAuthState.isAuthenticated],
-  ([authReady, isAuthenticated]) => {
+  ([authReady]) => {
     if (!authReady) {
-      return;
-    }
-
-    if (!isAuthenticated) {
-      reportsLoadedForSession.value = false;
-      reports.value = [];
-      loading.value = false;
-      loadError.value = "";
-      exportError.value = "";
-      plannerSettingsReady.value = true;
       return;
     }
 
@@ -786,19 +773,7 @@ watch(
 
 <template>
   <main class="reports-page">
-    <AuthAccessCard
-      v-if="
-        plannerAuthState.authReady.value &&
-        !plannerAuthState.isAuthenticated.value
-      "
-      title="Acceso a filtros"
-      subtitle="Inicia sesión para filtrar informes, imprimirlos o exportarlos a Excel."
-    />
-
-    <section
-      v-else-if="plannerAuthState.isAuthenticated.value"
-      class="reports-sheet"
-    >
+    <section v-if="plannerAuthState.authReady.value" class="reports-sheet">
       <header class="reports-header no-print">
         <p class="sidebar-copy reports-header__intro">
           Filtra por cualquier campo del informe y genera un listado listo para

@@ -247,6 +247,12 @@ button {
   justify-items: center;
 }
 
+.auth-panel {
+  display: grid;
+  gap: 16px;
+  width: min(100%, 500px);
+}
+
 .auth-card__body,
 .auth-card__form,
 .auth-card__header {
@@ -273,6 +279,15 @@ button {
   margin: 0;
   color: #9e2d2d;
   font-weight: 700;
+}
+
+.confirm-dialog--auth {
+  width: min(100%, 560px);
+}
+
+.confirm-dialog--auth .auth-card__body,
+.confirm-dialog--auth .auth-card__form {
+  width: 100%;
 }
 
 .company-header {
