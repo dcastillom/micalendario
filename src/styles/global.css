@@ -309,7 +309,7 @@ button {
   width: 96px;
   height: 96px;
   padding: 12px;
-  border-radius: 26px;
+  border-radius: 26px !important;
   background: rgba(255, 255, 255, 0.86);
   box-shadow:
     inset 0 0 0 1px rgba(46, 64, 55, 0.08),
