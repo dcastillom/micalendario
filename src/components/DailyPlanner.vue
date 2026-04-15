@@ -1142,7 +1142,7 @@ async function handleImportFileSelection(event: Event) {
             existingReferenceMap.get(normalizedReference);
 
           if (existingReference) {
-            const message = `La referencia ya existe el dia ${existingReference.dateKey}.`;
+            const message = `La referencia ya existe el día ${existingReference.dateKey}.`;
             errors.push(message);
             blockingErrors.push(message);
           }
@@ -2191,7 +2191,7 @@ async function confirmMoveEntry() {
       savingState.value = "saved";
       queueDesktopBackup("entry-move");
     } catch (error) {
-      console.error("No se pudo guardar el dia de origen tras mover.", error);
+      console.error("No se pudo guardar el día de origen tras mover.", error);
 
       try {
         const restoredTargetRecord = await saveDay(targetOriginalRecord);
@@ -2199,7 +2199,7 @@ async function confirmMoveEntry() {
         syncAllRecordsRecord(restoredTargetRecord);
       } catch (rollbackError) {
         console.error(
-          "No se pudo revertir el dia de destino tras un error al mover.",
+          "No se pudo revertir el día de destino tras un error al mover.",
           rollbackError,
         );
       }
@@ -2538,7 +2538,7 @@ onBeforeUnmount(() => {
       </section>
 
       <div v-if="isCurrentViewLoading" class="loading-state">
-        Cargando el dia seleccionado...
+        Cargando el día seleccionado...
       </div>
 
       <section

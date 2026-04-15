@@ -16,7 +16,7 @@ La mejor opcion para este caso es `SQLite`:
 - Es un archivo local por usuario, sin servidor.
 - Funciona bien en Windows y macOS.
 - Facilita copias de seguridad y exportacion.
-- El modelo relacional encaja con dias y filas de agenda.
+- El modelo relacional encaja con días y filas de agenda.
 
 He dejado un esquema inicial en [database/schema.sql](/Users/d.castillo.marfull/Projects/micalendario/database/schema.sql). Para acelerar la primera version, la persistencia actual usa un archivo JSON local; asi podemos validar la UX antes de fijar la capa SQLite.
 
