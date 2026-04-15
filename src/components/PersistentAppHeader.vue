@@ -101,11 +101,14 @@ const canRenderHeaderActions = computed(
   () => isAgendaRoute.value || isReportsRoute.value,
 );
 const canImportReports = computed(
-  () => isAgendaRoute.value && headerUserProfile.value?.role !== "viewer",
+  () =>
+    isAgendaRoute.value &&
+    isAuthenticated.value &&
+    (headerUserProfile.value?.role === "admin" ||
+      headerUserProfile.value?.role === "editor"),
 );
 const canShowAuthAction = computed(
-  () =>
-    hasSupabaseConfig() && (isAgendaRoute.value || isReportsRoute.value),
+  () => hasSupabaseConfig() && (isAgendaRoute.value || isReportsRoute.value),
 );
 const displayedSettings = computed<PlannerSettings>(() =>
   brandEditorOpen.value
@@ -200,11 +203,7 @@ const contextualHeaderIconPaths = computed(() =>
         "M8 14.5h8v5H8zM16.5 11.5h.01",
       ],
 );
-const importIconPaths = [
-  "M12 4v10",
-  "m8 10 4 4 4-4",
-  "M5 19h14",
-];
+const importIconPaths = ["M12 4v10", "m8 10 4 4 4-4", "M5 19h14"];
 const currentUserEmail = computed(() => headerUserProfile.value?.email ?? "");
 const currentUserRoleLabel = computed(() => {
   if (headerUserProfile.value?.role === "admin") {
@@ -1110,45 +1109,45 @@ onBeforeUnmount(() => {
                     />
                   </svg>
                   <span>{{ authActionLabel }}</span>
-              </button>
-              <button
-                v-if="canImportReports"
-                class="company-header__menu-item company-header__menu-item--filters"
-                type="button"
-                @click="handleImportReportsClick"
-              >
-                <svg
-                  aria-hidden="true"
-                  class="company-header__menu-item-icon"
-                  viewBox="0 0 24 24"
+                </button>
+                <button
+                  v-if="canImportReports"
+                  class="company-header__menu-item company-header__menu-item--filters"
+                  type="button"
+                  @click="handleImportReportsClick"
                 >
-                  <path
-                    d="M12 3v12"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.9"
-                  />
-                  <path
-                    d="m7.5 10.5 4.5 4.5 4.5-4.5"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.9"
-                  />
-                  <path
-                    d="M5 19h14"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.9"
-                  />
-                </svg>
-                <span>Importar Excel</span>
-              </button>
+                  <svg
+                    aria-hidden="true"
+                    class="company-header__menu-item-icon"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      d="M12 3v12"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.9"
+                    />
+                    <path
+                      d="m7.5 10.5 4.5 4.5 4.5-4.5"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.9"
+                    />
+                    <path
+                      d="M5 19h14"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.9"
+                    />
+                  </svg>
+                  <span>Importar Excel</span>
+                </button>
 
                 <button
                   v-if="canManageUsers"
