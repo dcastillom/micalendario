@@ -18,6 +18,7 @@ import {
   signOutPlannerUser,
 } from "../lib/planner-auth";
 import {
+  dispatchPlannerOpenImportDialog,
   dispatchPlannerSettingsUpdated,
   PLANNER_SETTINGS_UPDATED_EVENT,
 } from "../lib/planner-ui-events";
@@ -98,6 +99,9 @@ const canEditBranding = computed(
 );
 const canRenderHeaderActions = computed(
   () => isAgendaRoute.value || isReportsRoute.value,
+);
+const canImportReports = computed(
+  () => isAgendaRoute.value && headerUserProfile.value?.role !== "viewer",
 );
 const canShowAuthAction = computed(
   () =>
@@ -196,6 +200,11 @@ const contextualHeaderIconPaths = computed(() =>
         "M8 14.5h8v5H8zM16.5 11.5h.01",
       ],
 );
+const importIconPaths = [
+  "M12 4v10",
+  "m8 10 4 4 4-4",
+  "M5 19h14",
+];
 const currentUserEmail = computed(() => headerUserProfile.value?.email ?? "");
 const currentUserRoleLabel = computed(() => {
   if (headerUserProfile.value?.role === "admin") {
@@ -486,6 +495,15 @@ function handleUsersButtonClick() {
     resetUserForm();
     void refreshManagedUsers();
   }
+}
+
+function handleImportReportsClick() {
+  if (!canImportReports.value) {
+    return;
+  }
+
+  closeHeaderMenu();
+  dispatchPlannerOpenImportDialog();
 }
 
 function removeBrandLogo() {
@@ -987,6 +1005,31 @@ onBeforeUnmount(() => {
                   />
                 </svg>
               </button>
+              <button
+                v-if="canImportReports"
+                class="company-header__action-button company-header__action-button--icon"
+                type="button"
+                aria-label="Importar Excel"
+                title="Importar Excel"
+                @click="handleImportReportsClick"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="company-header__action-icon"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    v-for="path in importIconPaths"
+                    :key="path"
+                    :d="path"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.9"
+                  />
+                </svg>
+              </button>
               <a
                 class="ghost-link company-header__action-button company-header__action-button--icon"
                 :aria-label="contextualHeaderActionLabel"
@@ -1067,7 +1110,45 @@ onBeforeUnmount(() => {
                     />
                   </svg>
                   <span>{{ authActionLabel }}</span>
-                </button>
+              </button>
+              <button
+                v-if="canImportReports"
+                class="company-header__menu-item company-header__menu-item--filters"
+                type="button"
+                @click="handleImportReportsClick"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="company-header__menu-item-icon"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    d="M12 3v12"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.9"
+                  />
+                  <path
+                    d="m7.5 10.5 4.5 4.5 4.5-4.5"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.9"
+                  />
+                  <path
+                    d="M5 19h14"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.9"
+                  />
+                </svg>
+                <span>Importar Excel</span>
+              </button>
 
                 <button
                   v-if="canManageUsers"

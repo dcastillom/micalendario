@@ -22,6 +22,40 @@ export interface PlannerBackupSnapshot {
   settings: PlannerSettings;
 }
 
+export interface PlannerReferenceLocation {
+  dateKey: string;
+  entryId: string;
+  reference: string;
+}
+
+export interface PlannerReferenceConflict {
+  normalizedReference: string;
+  first: PlannerReferenceLocation;
+  second: PlannerReferenceLocation;
+}
+
+export class DuplicateReferenceError extends Error {
+  conflicts: PlannerReferenceConflict[];
+
+  constructor(conflicts: PlannerReferenceConflict[]) {
+    const firstConflict = conflicts[0];
+    const referenceLabel =
+      firstConflict?.second.reference || firstConflict?.first.reference || "";
+    const locationLabel = firstConflict?.first.dateKey
+      ? ` del día ${firstConflict.first.dateKey}`
+      : "";
+
+    super(
+      referenceLabel
+        ? `La referencia ${referenceLabel} ya existe${locationLabel}.`
+        : "Hay referencias duplicadas en los informes.",
+    );
+
+    this.name = "DuplicateReferenceError";
+    this.conflicts = conflicts;
+  }
+}
+
 function normalizeBackupSnapshot(
   snapshot: PlannerBackupSnapshot,
 ): PlannerBackupSnapshot {
@@ -79,6 +113,64 @@ function normalizeRecordMap(days: Record<string, DayRecord>) {
   );
 }
 
+export function normalizePlannerReference(value: string | null | undefined) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .trim()
+    .toLocaleLowerCase("es-ES");
+}
+
+export function findDuplicateReferenceConflicts(
+  days: Record<string, DayRecord>,
+): PlannerReferenceConflict[] {
+  const seen = new Map<string, PlannerReferenceLocation>();
+  const conflicts: PlannerReferenceConflict[] = [];
+
+  for (const [dateKey, record] of Object.entries(normalizeRecordMap(days))) {
+    for (const entry of record.entries) {
+      const reference = entry.referencia.trim();
+      const normalizedReference = normalizePlannerReference(reference);
+
+      if (!normalizedReference) {
+        continue;
+      }
+
+      const nextLocation: PlannerReferenceLocation = {
+        dateKey,
+        entryId: entry.id,
+        reference,
+      };
+      const previousLocation = seen.get(normalizedReference);
+
+      if (
+        previousLocation &&
+        (previousLocation.entryId !== nextLocation.entryId ||
+          previousLocation.dateKey !== nextLocation.dateKey)
+      ) {
+        conflicts.push({
+          normalizedReference,
+          first: previousLocation,
+          second: nextLocation,
+        });
+        continue;
+      }
+
+      seen.set(normalizedReference, nextLocation);
+    }
+  }
+
+  return conflicts;
+}
+
+function assertNoDuplicateReferences(days: Record<string, DayRecord>) {
+  const conflicts = findDuplicateReferenceConflicts(days);
+
+  if (conflicts.length > 0) {
+    throw new DuplicateReferenceError(conflicts);
+  }
+}
+
 function normalizeAsignadoOptions(options: string[]) {
   const uniqueOptions = [];
   const seen = new Set<string>();
@@ -121,9 +213,7 @@ function normalizeLogoDataUrl(value: string | null | undefined) {
 }
 
 function normalizeSettings(
-  settings?:
-    | (Partial<PlannerSettings> & { pedidoOptions?: string[] })
-    | null,
+  settings?: (Partial<PlannerSettings> & { pedidoOptions?: string[] }) | null,
 ): PlannerSettings {
   return {
     asignadoOptions: normalizeAsignadoOptions(
@@ -131,7 +221,9 @@ function normalizeSettings(
         settings?.pedidoOptions ??
         DEFAULT_ASIGNADO_OPTIONS,
     ),
-    companyName: normalizeTextSetting(settings?.companyName ?? DEFAULT_COMPANY_NAME),
+    companyName: normalizeTextSetting(
+      settings?.companyName ?? DEFAULT_COMPANY_NAME,
+    ),
     companySubtitle: normalizeTextSetting(
       settings?.companySubtitle ?? DEFAULT_COMPANY_SUBTITLE,
     ),
@@ -280,7 +372,9 @@ async function loadRemoteSettings() {
 
   const { data, error } = await supabase
     .from(REMOTE_SETTINGS_TABLE)
-    .select("asignado_options, company_name, company_subtitle, company_logo_data_url")
+    .select(
+      "asignado_options, company_name, company_subtitle, company_logo_data_url",
+    )
     .eq("id", REMOTE_SHARED_SETTINGS_ID)
     .maybeSingle();
 
@@ -323,7 +417,9 @@ async function saveRemoteSettings(settings: PlannerSettings) {
       },
       { onConflict: "id" },
     )
-    .select("asignado_options, company_name, company_subtitle, company_logo_data_url")
+    .select(
+      "asignado_options, company_name, company_subtitle, company_logo_data_url",
+    )
     .single();
 
   if (error) {
@@ -387,6 +483,40 @@ async function replaceRemoteAllData(snapshot: PlannerBackupSnapshot) {
 
   if (settingsError) {
     throw settingsError;
+  }
+}
+
+async function replaceRemoteDays(days: Record<string, DayRecord>) {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    throw new Error("Supabase no esta disponible.");
+  }
+
+  const normalizedDays = normalizeRecordMap(days);
+  const records = Object.values(normalizedDays).map((record) =>
+    serializeRemoteRecord(record),
+  );
+
+  const { error: deleteDaysError } = await supabase
+    .from(REMOTE_DAYS_TABLE)
+    .delete()
+    .gte("date_key", "0000-01-01");
+
+  if (deleteDaysError) {
+    throw deleteDaysError;
+  }
+
+  if (records.length === 0) {
+    return;
+  }
+
+  const { error: insertDaysError } = await supabase
+    .from(REMOTE_DAYS_TABLE)
+    .upsert(records, { onConflict: "date_key" });
+
+  if (insertDaysError) {
+    throw insertDaysError;
   }
 }
 
@@ -605,4 +735,27 @@ export async function restoreBackupSnapshot(
 
   writeBrowserStore(normalized.days);
   writeBrowserSettings(normalized.settings);
+}
+
+export async function replacePlannerDays(
+  days: Record<string, DayRecord>,
+): Promise<void> {
+  const normalizedDays = normalizeRecordMap(days);
+
+  if (hasSupabaseConfig()) {
+    await replaceRemoteDays(normalizedDays);
+    return;
+  }
+
+  if (typeof window !== "undefined" && window.desktopPlanner?.replaceData) {
+    await window.desktopPlanner.replaceData({
+      createdAt: new Date().toISOString(),
+      storageMode: "local",
+      days: normalizedDays,
+      settings: await loadSettings(),
+    });
+    return;
+  }
+
+  writeBrowserStore(normalizedDays);
 }

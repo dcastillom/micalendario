@@ -6,6 +6,7 @@ export const PLANNER_BRAND_EDITOR_STATE_EVENT = "planner:brand-editor-state";
 export const PLANNER_AGENDA_HEADER_STATE_EVENT = "planner:agenda-header-state";
 export const PLANNER_AGENDA_REFERENCE_FILTER_EVENT =
   "planner:agenda-reference-filter";
+export const PLANNER_OPEN_IMPORT_DIALOG_EVENT = "planner:open-import-dialog";
 
 export type PlannerAgendaViewMode = "day" | "month";
 
@@ -70,4 +71,12 @@ export function dispatchPlannerAgendaReferenceFilter(value: string) {
       detail: value,
     }),
   );
+}
+
+export function dispatchPlannerOpenImportDialog() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.dispatchEvent(new Event(PLANNER_OPEN_IMPORT_DIALOG_EVENT));
 }

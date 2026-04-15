@@ -2112,6 +2112,7 @@ export const SPANISH_MUNICIPALITIES = [
   "Cepeda la Mora (Ávila)",
   "Cerbón (Soria)",
   "Cerceda (A Coruña)",
+  "Cerceda (Madrid)",
   "Cercedilla (Madrid)",
   "Cercs (Barcelona)",
   "Cerdà (Valencia/València)",
@@ -5575,6 +5576,7 @@ export const SPANISH_MUNICIPALITIES = [
   "Quintanilla de Onsoña (Palencia)",
   "Quintanilla de Trigueros (Valladolid)",
   "Quintanilla de Urz (Zamora)",
+  "Quintanilla del Agua (Burgos)",
   "Quintanilla del Agua y Tordueles (Burgos)",
   "Quintanilla del Coco (Burgos)",
   "Quintanilla del Molar (Valladolid)",
@@ -5841,6 +5843,7 @@ export const SPANISH_MUNICIPALITIES = [
   "Royuela (Teruel)",
   "Royuela de Río Franco (Burgos)",
   "Rozalén del Monte (Cuenca)",
+  "Rozas, Las (Madrid)",
   "Rozas de Madrid, Las (Madrid)",
   "Rozas de Puerto Real (Madrid)",
   "Rozas de Valdearroyo, Las (Cantabria)",
@@ -7635,6 +7638,7 @@ export const SPANISH_MUNICIPALITIES = [
   "Villagonzalo (Badajoz)",
   "Villagonzalo de Tormes (Salamanca)",
   "Villagonzalo Pedernales (Burgos)",
+  "Villagutiérrez (Burgos)",
   "Villahán (Palencia)",
   "Villaharta (Córdoba)",
   "Villahermosa (Ciudad Real)",
@@ -8190,6 +8194,9 @@ export const SPANISH_PROVINCES = [
   "Zaragoza",
 ] as const;
 
-export const SPANISH_LOCALITIES = [...SPANISH_PROVINCES, ...SPANISH_MUNICIPALITIES].sort((left, right) =>
-  left.localeCompare(right, "es", { sensitivity: "base" })
+export const SPANISH_LOCALITIES = [
+  ...SPANISH_PROVINCES,
+  ...SPANISH_MUNICIPALITIES,
+].sort((left, right) =>
+  left.localeCompare(right, "es", { sensitivity: "base" }),
 );
