@@ -1911,7 +1911,7 @@ button {
 
 .sheet-grid--header {
   display: grid;
-  grid-template-columns: 1.05fr 140px 1.25fr 1fr 1.35fr 120px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 12px;
   padding: 0 6px 10px;
   color: var(--muted);
@@ -2006,19 +2006,58 @@ button {
 
 .sheet-grid--body {
   display: grid;
-  grid-template-columns: 1.05fr 140px 1.25fr 1fr 1.35fr 120px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   align-items: start;
   gap: 12px;
+}
+
+.field--reference {
+  grid-column: span 2;
+}
+
+.field--asignado {
+  grid-column: span 2;
+}
+
+.field--laborante {
+  grid-column: span 2;
+}
+
+.field--fecha-campo {
+  grid-column: span 2;
+}
+
+.field--planos {
+  grid-column: span 1;
+}
+
+.field--localidad {
+  grid-column: span 2;
+}
+
+.field--entregado {
+  grid-column: span 1;
+  align-self: end;
+  min-width: 72px;
+  max-width: 84px;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.field--notes {
+  grid-column: 1 / -1;
 }
 
 .field--checkbox {
   align-content: start;
   justify-items: center;
+  gap: 8px;
 }
 
 .field--checkbox input {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
 }
 
 .reports-page {
@@ -2319,6 +2358,10 @@ button {
   .field--checkbox {
     justify-items: start;
   }
+
+  .field--notes {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 1320px) {
@@ -2366,6 +2409,10 @@ button {
 
   .sheet-grid--body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .field--notes {
+    grid-column: 1 / -1;
   }
 
   .reports-filters {
@@ -2547,6 +2594,17 @@ button {
 
   .sheet-grid--body {
     grid-template-columns: 1fr;
+  }
+
+  .field--reference,
+  .field--asignado,
+  .field--laborante,
+  .field--fecha-campo,
+  .field--planos,
+  .field--localidad,
+  .field--entregado,
+  .field--notes {
+    grid-column: auto;
   }
 
   .row-topbar {

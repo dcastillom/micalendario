@@ -1534,8 +1534,7 @@ onBeforeUnmount(() => {
       >
         <div class="pedido-editor__header">
           <p class="pedido-editor__copy">
-            Añade o elimina las opciones que aparecerán en el dropdown de
-            asignado.
+            Añade o elimina asignados o laborantes
           </p>
         </div>
 

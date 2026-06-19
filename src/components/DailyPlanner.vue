@@ -2690,7 +2690,7 @@ onBeforeUnmount(() => {
             </div>
 
             <div class="sheet-grid sheet-grid--body">
-              <label class="field">
+              <label class="field field--reference">
                 <span class="field-label">Referencia:</span>
                 <input
                   v-model="entry.referencia"
@@ -2709,7 +2709,7 @@ onBeforeUnmount(() => {
                 </p>
               </label>
 
-              <label class="field">
+              <label class="field field--asignado">
                 <span class="field-label">Asignado:</span>
                 <select v-model="entry.asignado" :disabled="!canEditReports">
                   <option value="">Selecciona un asignado</option>
@@ -2729,7 +2729,38 @@ onBeforeUnmount(() => {
                 </select>
               </label>
 
-              <label class="field">
+              <label class="field field--laborante">
+                <span class="field-label">Laborante:</span>
+                <select v-model="entry.laborante" :disabled="!canEditReports">
+                  <option value="">Selecciona un laborante</option>
+                  <option
+                    v-for="laboranteOption in getAsignadoSelectOptions(
+                      entry.laborante,
+                    )"
+                    :key="laboranteOption"
+                    :value="laboranteOption"
+                  >
+                    {{
+                      asignadoOptions.includes(laboranteOption)
+                        ? laboranteOption
+                        : `${laboranteOption} (ya no disponible)`
+                    }}
+                  </option>
+                </select>
+              </label>
+
+              <label class="field field--fecha-campo">
+                <span class="field-label">Fecha de campo:</span>
+                <input
+                  v-model="entry.fechaCampo"
+                  :readonly="!canEditReports"
+                  type="date"
+                  @blur="handleTextFieldBlur"
+                  @focus="handleTextFieldFocus"
+                />
+              </label>
+
+              <label class="field field--planos">
                 <span class="field-label">Planos:</span>
                 <select v-model="entry.plano" :disabled="!canEditReports">
                   <option value="si">Si</option>
@@ -2737,7 +2768,7 @@ onBeforeUnmount(() => {
                 </select>
               </label>
 
-              <label class="field">
+              <label class="field field--localidad">
                 <span class="field-label">Localidad:</span>
                 <LocalityAutocomplete
                   v-model="entry.localidad"
@@ -2745,7 +2776,16 @@ onBeforeUnmount(() => {
                 />
               </label>
 
-              <label class="field">
+              <label class="field field--checkbox field--entregado">
+                <span class="field-label">Entregado</span>
+                <input
+                  v-model="entry.entregado"
+                  :disabled="!canEditReports"
+                  type="checkbox"
+                />
+              </label>
+
+              <label class="field field--notes">
                 <span class="field-label">Observaciones:</span>
                 <textarea
                   v-model="entry.observaciones"
@@ -2754,15 +2794,6 @@ onBeforeUnmount(() => {
                   @focus="handleTextFieldFocus"
                   rows="3"
                   placeholder="Notas de montaje, materiales, seguimiento..."
-                />
-              </label>
-
-              <label class="field field--checkbox">
-                <span class="field-label">Entregado</span>
-                <input
-                  v-model="entry.entregado"
-                  :disabled="!canEditReports"
-                  type="checkbox"
                 />
               </label>
             </div>

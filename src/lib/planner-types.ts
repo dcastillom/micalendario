@@ -4,6 +4,8 @@ export type PlannerRole = "admin" | "editor" | "viewer";
 export interface DayEntry {
   id: string;
   asignado: string;
+  laborante: string;
+  fechaCampo: string;
   plano: PlanState;
   referencia: string;
   localidad: string;

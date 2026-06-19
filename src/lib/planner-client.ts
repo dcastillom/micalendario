@@ -79,6 +79,8 @@ export function createEmptyEntry(): DayEntry {
   return {
     id: createId(),
     asignado: "",
+    laborante: "",
+    fechaCampo: "",
     plano: "",
     referencia: "",
     localidad: "",
@@ -87,10 +89,18 @@ export function createEmptyEntry(): DayEntry {
   };
 }
 
-function normalizeEntry(entry: DayEntry & { pedido?: string }) {
+function normalizeEntry(
+  entry: DayEntry & {
+    pedido?: string;
+    laborante?: string | null;
+    fechaCampo?: string | null;
+  },
+) {
   return {
     ...entry,
     asignado: entry.asignado ?? entry.pedido ?? "",
+    laborante: entry.laborante ?? "",
+    fechaCampo: entry.fechaCampo ?? "",
   };
 }
 
@@ -396,36 +406,23 @@ async function loadRemoteSettings() {
   );
 }
 
-async function saveRemoteSettings(settings: PlannerSettings) {
-  const supabase = getSupabaseClient();
+function serializeRemoteSettings(settings: PlannerSettings) {
+  return {
+    id: REMOTE_SHARED_SETTINGS_ID,
+    asignado_options: settings.asignadoOptions,
+    company_name: settings.companyName,
+    company_subtitle: settings.companySubtitle,
+    company_logo_data_url: settings.companyLogoDataUrl,
+    updated_at: new Date().toISOString(),
+  };
+}
 
-  if (!supabase) {
-    return null;
-  }
-
-  const normalized = normalizeSettings(settings);
-  const { data, error } = await supabase
-    .from(REMOTE_SETTINGS_TABLE)
-    .upsert(
-      {
-        id: REMOTE_SHARED_SETTINGS_ID,
-        asignado_options: normalized.asignadoOptions,
-        company_name: normalized.companyName,
-        company_subtitle: normalized.companySubtitle,
-        company_logo_data_url: normalized.companyLogoDataUrl,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "id" },
-    )
-    .select(
-      "asignado_options, company_name, company_subtitle, company_logo_data_url",
-    )
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
+function normalizeRemoteSettingsRow(data: {
+  asignado_options: unknown;
+  company_name: string | null;
+  company_subtitle: string | null;
+  company_logo_data_url: string | null;
+}) {
   return normalizeSettings({
     asignadoOptions: Array.isArray(data.asignado_options)
       ? data.asignado_options.map((value) => String(value))
@@ -434,6 +431,72 @@ async function saveRemoteSettings(settings: PlannerSettings) {
     companySubtitle: data.company_subtitle ?? "",
     companyLogoDataUrl: data.company_logo_data_url ?? "",
   });
+}
+
+async function saveOrInsertRemoteSettings(settings: PlannerSettings) {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    return null;
+  }
+
+  const serialized = serializeRemoteSettings(settings);
+  const updatePayload = {
+    asignado_options: serialized.asignado_options,
+    company_name: serialized.company_name,
+    company_subtitle: serialized.company_subtitle,
+    company_logo_data_url: serialized.company_logo_data_url,
+    updated_at: serialized.updated_at,
+  };
+  const selectColumns =
+    "asignado_options, company_name, company_subtitle, company_logo_data_url";
+  const { data: existingRow, error: existingRowError } = await supabase
+    .from(REMOTE_SETTINGS_TABLE)
+    .select("id")
+    .eq("id", REMOTE_SHARED_SETTINGS_ID)
+    .maybeSingle();
+
+  if (existingRowError) {
+    throw existingRowError;
+  }
+
+  if (existingRow) {
+    const { data, error } = await supabase
+      .from(REMOTE_SETTINGS_TABLE)
+      .update(updatePayload)
+      .eq("id", REMOTE_SHARED_SETTINGS_ID)
+      .select(selectColumns)
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return normalizeRemoteSettingsRow(data);
+  }
+
+  const { data, error } = await supabase
+    .from(REMOTE_SETTINGS_TABLE)
+    .insert(serialized)
+    .select(selectColumns)
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return normalizeRemoteSettingsRow(data);
+}
+
+async function saveRemoteSettings(settings: PlannerSettings) {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    return null;
+  }
+
+  const normalized = normalizeSettings(settings);
+  return saveOrInsertRemoteSettings(normalized);
 }
 
 async function replaceRemoteAllData(snapshot: PlannerBackupSnapshot) {
@@ -467,23 +530,7 @@ async function replaceRemoteAllData(snapshot: PlannerBackupSnapshot) {
     }
   }
 
-  const { error: settingsError } = await supabase
-    .from(REMOTE_SETTINGS_TABLE)
-    .upsert(
-      {
-        id: REMOTE_SHARED_SETTINGS_ID,
-        asignado_options: normalized.settings.asignadoOptions,
-        company_name: normalized.settings.companyName,
-        company_subtitle: normalized.settings.companySubtitle,
-        company_logo_data_url: normalized.settings.companyLogoDataUrl,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "id" },
-    );
-
-  if (settingsError) {
-    throw settingsError;
-  }
+  await saveOrInsertRemoteSettings(normalized.settings);
 }
 
 async function replaceRemoteDays(days: Record<string, DayRecord>) {

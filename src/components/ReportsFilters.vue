@@ -20,8 +20,10 @@ type PlanoFilter = "" | "si" | "no" | "pendiente";
 type EntregadoFilter = "" | "si" | "no";
 type SortField =
   | "dateKey"
+  | "fechaCampo"
   | "referencia"
   | "asignado"
+  | "laborante"
   | "plano"
   | "localidad"
   | "observaciones"
@@ -32,8 +34,10 @@ interface ReportListItem {
   id: string;
   dateKey: string;
   dateSortValue: number;
+  fechaCampo: string;
   referencia: string;
   asignado: string;
+  laborante: string;
   plano: DayEntry["plano"];
   localidad: string;
   observaciones: string;
@@ -43,8 +47,10 @@ interface ReportListItem {
 interface FiltersState {
   dateFrom: string;
   dateTo: string;
+  fechaCampo: string;
   referencia: string;
   asignado: string;
+  laborante: string;
   plano: PlanoFilter;
   localidad: string;
   observaciones: string;
@@ -54,8 +60,10 @@ interface FiltersState {
 const DEFAULT_FILTERS: FiltersState = {
   dateFrom: "",
   dateTo: "",
+  fechaCampo: "",
   referencia: "",
   asignado: "",
+  laborante: "",
   plano: "",
   localidad: "",
   observaciones: "",
@@ -67,8 +75,10 @@ const DEFAULT_SORT_DIRECTION: SortDirection = "asc";
 
 const SORT_FIELD_OPTIONS: Array<{ value: SortField; label: string }> = [
   { value: "dateKey", label: "Fecha" },
+  { value: "fechaCampo", label: "Fecha de campo" },
   { value: "referencia", label: "Referencia" },
   { value: "asignado", label: "Asignado" },
+  { value: "laborante", label: "Laborante" },
   { value: "plano", label: "Planos" },
   { value: "localidad", label: "Localidad" },
   { value: "observaciones", label: "Observaciones" },
@@ -267,10 +277,14 @@ function getReportFieldValue(report: ReportListItem, field: SortField) {
   switch (field) {
     case "dateKey":
       return report.dateKey;
+    case "fechaCampo":
+      return report.fechaCampo || "Sin fecha";
     case "referencia":
       return report.referencia || "Sin referencia";
     case "asignado":
       return report.asignado || "Sin asignar";
+    case "laborante":
+      return report.laborante || "Sin laborante";
     case "plano":
       return getPlanoLabel(report.plano);
     case "localidad":
@@ -356,8 +370,10 @@ function getAriaSort(field: SortField) {
 }
 
 const normalizedFilters = computed(() => ({
+  fechaCampo: normalize(filters.value.fechaCampo),
   referencia: normalize(filters.value.referencia),
   asignado: normalize(filters.value.asignado),
+  laborante: normalize(filters.value.laborante),
   localidad: normalize(filters.value.localidad),
   observaciones: normalize(filters.value.observaciones),
 }));
@@ -400,6 +416,13 @@ const filteredReports = computed(() => {
       }
 
       if (
+        normalizedFilters.value.fechaCampo &&
+        !normalize(report.fechaCampo).includes(normalizedFilters.value.fechaCampo)
+      ) {
+        return false;
+      }
+
+      if (
         normalizedFilters.value.referencia &&
         !normalize(report.referencia).includes(
           normalizedFilters.value.referencia,
@@ -411,6 +434,13 @@ const filteredReports = computed(() => {
       if (
         normalizedFilters.value.asignado &&
         !normalize(report.asignado).includes(normalizedFilters.value.asignado)
+      ) {
+        return false;
+      }
+
+      if (
+        normalizedFilters.value.laborante &&
+        !normalize(report.laborante).includes(normalizedFilters.value.laborante)
       ) {
         return false;
       }
@@ -490,12 +520,20 @@ const activeFilterTags = computed(() => {
     tags.push(`Hasta ${formatDate(filters.value.dateTo)}`);
   }
 
+  if (filters.value.fechaCampo.trim()) {
+    tags.push(`Fecha de campo: ${filters.value.fechaCampo.trim()}`);
+  }
+
   if (filters.value.referencia.trim()) {
     tags.push(`Referencia: ${filters.value.referencia.trim()}`);
   }
 
   if (filters.value.asignado.trim()) {
     tags.push(`Asignado: ${filters.value.asignado.trim()}`);
+  }
+
+  if (filters.value.laborante.trim()) {
+    tags.push(`Laborante: ${filters.value.laborante.trim()}`);
   }
 
   if (filters.value.plano) {
@@ -587,8 +625,12 @@ async function printResults() {
 function buildExportRows() {
   return filteredReports.value.map((report) => ({
     Fecha: formatDate(report.dateKey),
+    "Fecha de campo": report.fechaCampo
+      ? formatDate(report.fechaCampo)
+      : "",
     Referencia: report.referencia || "",
     Asignado: report.asignado || "",
+    Laborante: report.laborante || "",
     Planos: getPlanoLabel(report.plano),
     Localidad: report.localidad || "",
     Observaciones: report.observaciones || "",
@@ -686,8 +728,10 @@ function mapEntryToListItem(dateKey: string, entry: DayEntry): ReportListItem {
     id: entry.id,
     dateKey: normalizedDateKey,
     dateSortValue: getDateSortValue(normalizedDateKey),
+    fechaCampo: entry.fechaCampo.trim(),
     referencia: entry.referencia.trim(),
     asignado: entry.asignado.trim(),
+    laborante: entry.laborante.trim(),
     plano: entry.plano,
     localidad: entry.localidad.trim(),
     observaciones: entry.observaciones.trim(),
@@ -817,6 +861,11 @@ watch(
         </label>
 
         <label class="field">
+          <span class="field-label">Fecha de campo:</span>
+          <input v-model="filters.fechaCampo" type="date" />
+        </label>
+
+        <label class="field">
           <span class="field-label">Referencia:</span>
           <input
             v-model="filters.referencia"
@@ -845,6 +894,20 @@ watch(
               :value="asignadoOption"
             >
               {{ asignadoOption }}
+            </option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span class="field-label">Laborante:</span>
+          <select v-model="filters.laborante">
+            <option value="">Todos</option>
+            <option
+              v-for="laboranteOption in asignadoOptions"
+              :key="laboranteOption"
+              :value="laboranteOption"
+            >
+              {{ laboranteOption }}
             </option>
           </select>
         </label>
@@ -1050,6 +1113,24 @@ watch(
                     </span>
                   </button>
                 </th>
+                <th :aria-sort="getAriaSort('fechaCampo')">
+                  <button
+                    class="reports-sort-button"
+                    type="button"
+                    @click="setSortField('fechaCampo')"
+                  >
+                    <span>Fecha de campo</span>
+                    <span
+                      class="reports-sort-button__icon"
+                      :class="{
+                        'is-active': sortField === 'fechaCampo',
+                      }"
+                      aria-hidden="true"
+                    >
+                      {{ getSortIndicator("fechaCampo") }}
+                    </span>
+                  </button>
+                </th>
                 <th :aria-sort="getAriaSort('referencia')">
                   <button
                     class="reports-sort-button"
@@ -1083,6 +1164,24 @@ watch(
                       aria-hidden="true"
                     >
                       {{ getSortIndicator("asignado") }}
+                    </span>
+                  </button>
+                </th>
+                <th :aria-sort="getAriaSort('laborante')">
+                  <button
+                    class="reports-sort-button"
+                    type="button"
+                    @click="setSortField('laborante')"
+                  >
+                    <span>Laborante</span>
+                    <span
+                      class="reports-sort-button__icon"
+                      :class="{
+                        'is-active': sortField === 'laborante',
+                      }"
+                      aria-hidden="true"
+                    >
+                      {{ getSortIndicator("laborante") }}
                     </span>
                   </button>
                 </th>
@@ -1179,8 +1278,10 @@ watch(
                   <strong>{{ formatDate(report.dateKey) }}</strong>
                   <span>{{ formatDateLong(report.dateKey) }}</span>
                 </td>
+                <td>{{ report.fechaCampo ? formatDate(report.fechaCampo) : "Sin fecha" }}</td>
                 <td>{{ report.referencia || "Sin referencia" }}</td>
                 <td>{{ report.asignado || "Sin asignar" }}</td>
+                <td>{{ report.laborante || "Sin laborante" }}</td>
                 <td>{{ getPlanoLabel(report.plano) }}</td>
                 <td>{{ report.localidad || "Sin localidad" }}</td>
                 <td class="reports-table__notes">
@@ -1253,8 +1354,10 @@ watch(
             <thead>
               <tr>
                 <th>Fecha</th>
+                <th>Fecha de campo</th>
                 <th>Referencia</th>
                 <th>Asignado</th>
+                <th>Laborante</th>
                 <th>Planos</th>
                 <th>Localidad</th>
                 <th class="reports-table__notes">Observaciones</th>
@@ -1271,8 +1374,10 @@ watch(
                   <strong>{{ formatDate(report.dateKey) }}</strong>
                   <span>{{ formatDateLong(report.dateKey) }}</span>
                 </td>
+                <td>{{ report.fechaCampo ? formatDate(report.fechaCampo) : "Sin fecha" }}</td>
                 <td>{{ report.referencia || "Sin referencia" }}</td>
                 <td>{{ report.asignado || "Sin asignar" }}</td>
+                <td>{{ report.laborante || "Sin laborante" }}</td>
                 <td>{{ getPlanoLabel(report.plano) }}</td>
                 <td>{{ report.localidad || "Sin localidad" }}</td>
                 <td class="reports-table__notes">

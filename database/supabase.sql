@@ -157,6 +157,7 @@ grant usage on schema public to anon, authenticated;
 grant select on public.planner_days to anon;
 grant select on public.planner_settings to anon;
 grant select, insert, update, delete on public.planner_days to authenticated;
+grant insert on public.planner_settings to authenticated;
 grant select, update on public.planner_settings to authenticated;
 grant select on public.planner_users to authenticated;
 grant execute on function public.is_active_planner_user() to authenticated;
@@ -200,13 +201,20 @@ for select
 to authenticated
 using (public.is_active_planner_user());
 
+drop policy if exists planner_settings_insert_admin on public.planner_settings;
+create policy planner_settings_insert_admin
+on public.planner_settings
+for insert
+to authenticated
+with check (public.current_planner_role() in ('admin', 'editor'));
+
 drop policy if exists planner_settings_update_admin on public.planner_settings;
 create policy planner_settings_update_admin
 on public.planner_settings
 for update
 to authenticated
-using (public.current_planner_role() = 'admin')
-with check (public.current_planner_role() = 'admin');
+using (public.current_planner_role() in ('admin', 'editor'))
+with check (public.current_planner_role() in ('admin', 'editor'));
 
 drop policy if exists planner_users_select_self on public.planner_users;
 create policy planner_users_select_self
