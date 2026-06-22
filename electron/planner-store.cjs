@@ -47,6 +47,7 @@ class PlannerStore {
       return this.normalize({
         version: 1,
         days: {},
+        vacations: [],
       });
     }
   }
@@ -59,7 +60,7 @@ class PlannerStore {
         : [...DEFAULT_ASIGNADO_OPTIONS];
 
     return {
-      version: 2,
+      version: 3,
       days: Object.fromEntries(
         Object.entries(data?.days ?? {}).map(([dateKey, day]) => [
           dateKey,
@@ -102,6 +103,22 @@ class PlannerStore {
           data?.settings?.companyLogoDataUrl ?? DEFAULT_COMPANY_LOGO_DATA_URL,
         ),
       },
+      vacations: Array.isArray(data?.vacations)
+        ? data.vacations
+            .map((vacation) => ({
+              id: String(vacation?.id ?? ""),
+              person: String(vacation?.person ?? "").trim(),
+              startDate: String(vacation?.startDate ?? "").trim(),
+              endDate: String(
+                vacation?.endDate ?? vacation?.startDate ?? "",
+              ).trim(),
+              notes: String(vacation?.notes ?? "").trim(),
+              updatedAt: String(
+                vacation?.updatedAt ?? new Date().toISOString(),
+              ),
+            }))
+            .sort((left, right) => left.startDate.localeCompare(right.startDate))
+        : [],
     };
   }
 
@@ -126,6 +143,7 @@ class PlannerStore {
       storageMode: snapshot.storageMode ?? "unknown",
       days: clone(snapshot.days ?? {}),
       settings: clone(snapshot.settings ?? {}),
+      vacations: clone(snapshot.vacations ?? []),
     };
 
     fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
@@ -173,6 +191,7 @@ class PlannerStore {
         typeof parsed?.storageMode === "string" ? parsed.storageMode : "local",
       days: clone(parsed?.days ?? {}),
       settings: clone(parsed?.settings ?? {}),
+      vacations: clone(parsed?.vacations ?? []),
     };
   }
 
@@ -181,6 +200,7 @@ class PlannerStore {
       version: 2,
       days: snapshot?.days ?? {},
       settings: snapshot?.settings ?? {},
+      vacations: snapshot?.vacations ?? [],
     });
     this.persist();
 
@@ -221,6 +241,26 @@ class PlannerStore {
     this.data.settings = this.normalize({ settings }).settings;
     this.persist();
     return this.getSettings();
+  }
+
+  getVacations() {
+    return clone(this.data.vacations);
+  }
+
+  saveVacation(vacation) {
+    const vacations = this.getVacations().filter((item) => item.id !== vacation.id);
+    vacations.push(vacation);
+    this.data.vacations = this.normalize({ vacations }).vacations;
+    this.persist();
+    return clone(
+      this.data.vacations.find((item) => item.id === vacation.id) ?? vacation,
+    );
+  }
+
+  deleteVacation(id) {
+    this.data.vacations = this.getVacations().filter((vacation) => vacation.id !== id);
+    this.persist();
+    return { success: true };
   }
 }
 

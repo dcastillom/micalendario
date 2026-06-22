@@ -14,6 +14,15 @@ create table if not exists public.planner_settings (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.planner_vacations (
+  id text primary key,
+  person text not null default '',
+  start_date text not null,
+  end_date text not null,
+  notes text not null default '',
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 alter table public.planner_settings
   add column if not exists company_name text not null default '';
 
@@ -52,6 +61,12 @@ execute function public.planner_touch_updated_at();
 drop trigger if exists planner_users_touch_updated_at on public.planner_users;
 create trigger planner_users_touch_updated_at
 before update on public.planner_users
+for each row
+execute function public.planner_touch_updated_at();
+
+drop trigger if exists planner_vacations_touch_updated_at on public.planner_vacations;
+create trigger planner_vacations_touch_updated_at
+before update on public.planner_vacations
 for each row
 execute function public.planner_touch_updated_at();
 
@@ -148,18 +163,22 @@ $$;
 alter table public.planner_days enable row level security;
 alter table public.planner_settings enable row level security;
 alter table public.planner_users enable row level security;
+alter table public.planner_vacations enable row level security;
 
 revoke all on table public.planner_days from anon, authenticated;
 revoke all on table public.planner_settings from anon, authenticated;
 revoke all on table public.planner_users from anon, authenticated;
+revoke all on table public.planner_vacations from anon, authenticated;
 
 grant usage on schema public to anon, authenticated;
 grant select on public.planner_days to anon;
 grant select on public.planner_settings to anon;
+grant select on public.planner_vacations to anon;
 grant select, insert, update, delete on public.planner_days to authenticated;
 grant insert on public.planner_settings to authenticated;
 grant select, update on public.planner_settings to authenticated;
 grant select on public.planner_users to authenticated;
+grant select, insert, update, delete on public.planner_vacations to authenticated;
 grant execute on function public.is_active_planner_user() to authenticated;
 grant execute on function public.current_planner_role() to authenticated;
 grant execute on function public.planner_has_users() to anon, authenticated;
@@ -229,3 +248,25 @@ on public.planner_users
 for select
 to authenticated
 using (public.current_planner_role() = 'admin');
+
+drop policy if exists planner_vacations_select_public on public.planner_vacations;
+create policy planner_vacations_select_public
+on public.planner_vacations
+for select
+to anon
+using (true);
+
+drop policy if exists planner_vacations_select_active_users on public.planner_vacations;
+create policy planner_vacations_select_active_users
+on public.planner_vacations
+for select
+to authenticated
+using (public.is_active_planner_user());
+
+drop policy if exists planner_vacations_write_admin_or_editor on public.planner_vacations;
+create policy planner_vacations_write_admin_or_editor
+on public.planner_vacations
+for all
+to authenticated
+using (public.current_planner_role() in ('admin', 'editor'))
+with check (public.current_planner_role() in ('admin', 'editor'));

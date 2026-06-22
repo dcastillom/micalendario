@@ -1,4 +1,9 @@
-import type { DayEntry, DayRecord, PlannerSettings } from "./planner-types";
+import type {
+  DayEntry,
+  DayRecord,
+  PlannerSettings,
+  PlannerVacation,
+} from "./planner-types";
 import {
   getSupabaseClient,
   hasSupabaseConfig,
@@ -7,12 +12,14 @@ import {
 
 const STORAGE_KEY = "mi-calendario-days";
 const SETTINGS_KEY = "mi-calendario-settings";
+const VACATIONS_KEY = "mi-calendario-vacations";
 const DEFAULT_ASIGNADO_OPTIONS = ["Bea", "Cris", "Gloria", "Alfredo", "Aída"];
 const DEFAULT_COMPANY_NAME = "";
 const DEFAULT_COMPANY_SUBTITLE = "";
 const DEFAULT_COMPANY_LOGO_DATA_URL = "";
 const REMOTE_DAYS_TABLE = "planner_days";
 const REMOTE_SETTINGS_TABLE = "planner_settings";
+const REMOTE_VACATIONS_TABLE = "planner_vacations";
 const REMOTE_SHARED_SETTINGS_ID = "shared";
 
 export interface PlannerBackupSnapshot {
@@ -20,6 +27,7 @@ export interface PlannerBackupSnapshot {
   storageMode: StorageModeStatus;
   days: Record<string, DayRecord>;
   settings: PlannerSettings;
+  vacations: PlannerVacation[];
 }
 
 export interface PlannerReferenceLocation {
@@ -64,6 +72,7 @@ function normalizeBackupSnapshot(
     storageMode: snapshot.storageMode,
     days: normalizeRecordMap(snapshot.days ?? {}),
     settings: normalizeSettings(snapshot.settings),
+    vacations: normalizeVacations(snapshot.vacations ?? []),
   };
 }
 
@@ -89,6 +98,17 @@ export function createEmptyEntry(): DayEntry {
   };
 }
 
+export function createEmptyVacation(): PlannerVacation {
+  return {
+    id: createId(),
+    person: "",
+    startDate: "",
+    endDate: "",
+    notes: "",
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 function normalizeEntry(
   entry: DayEntry & {
     pedido?: string;
@@ -107,11 +127,48 @@ function normalizeEntry(
 function normalizeRecord(record: DayRecord): DayRecord {
   return {
     ...record,
+    localidad: record.localidad ?? "",
     entries: record.entries.map((entry) =>
       normalizeEntry(entry as DayEntry & { pedido?: string }),
     ),
     updatedAt: record.updatedAt || new Date().toISOString(),
   };
+}
+
+function normalizeVacation(vacation: Partial<PlannerVacation>): PlannerVacation {
+  const startDate = String(vacation.startDate ?? "").trim();
+  const normalizedEndDate = String(vacation.endDate ?? "").trim() || startDate;
+
+  return {
+    id: String(vacation.id ?? createId()),
+    person: String(vacation.person ?? "").trim(),
+    startDate,
+    endDate: normalizedEndDate,
+    notes: String(vacation.notes ?? "").trim(),
+    updatedAt: String(vacation.updatedAt ?? new Date().toISOString()),
+  };
+}
+
+function normalizeVacations(vacations: PlannerVacation[]) {
+  return vacations
+    .map((vacation) => normalizeVacation(vacation))
+    .sort((left, right) => {
+      const startComparison = left.startDate.localeCompare(right.startDate);
+
+      if (startComparison !== 0) {
+        return startComparison;
+      }
+
+      const endComparison = left.endDate.localeCompare(right.endDate);
+
+      if (endComparison !== 0) {
+        return endComparison;
+      }
+
+      return left.person.localeCompare(right.person, "es", {
+        sensitivity: "base",
+      });
+    });
 }
 
 function normalizeRecordMap(days: Record<string, DayRecord>) {
@@ -253,6 +310,7 @@ export function createEmptyDay(dateKey: string): DayRecord {
     notes: "",
     entries: [],
     updatedAt: new Date().toISOString(),
+    localidad: "",
   });
 }
 
@@ -274,6 +332,17 @@ function serializeRemoteRecord(record: DayRecord) {
   };
 }
 
+function serializeRemoteVacation(vacation: PlannerVacation) {
+  return {
+    id: vacation.id,
+    person: vacation.person,
+    start_date: vacation.startDate,
+    end_date: vacation.endDate,
+    notes: vacation.notes,
+    updated_at: vacation.updatedAt,
+  };
+}
+
 function normalizeRemoteRecord(row: {
   date_key: string;
   notes: string | null;
@@ -284,6 +353,25 @@ function normalizeRemoteRecord(row: {
     dateKey: row.date_key,
     notes: row.notes ?? "",
     entries: Array.isArray(row.entries) ? row.entries : [],
+    updatedAt: row.updated_at ?? new Date().toISOString(),
+    localidad: "",
+  });
+}
+
+function normalizeRemoteVacation(row: {
+  id: string;
+  person: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  notes: string | null;
+  updated_at: string | null;
+}) {
+  return normalizeVacation({
+    id: row.id,
+    person: row.person ?? "",
+    startDate: row.start_date ?? "",
+    endDate: row.end_date ?? row.start_date ?? "",
+    notes: row.notes ?? "",
     updatedAt: row.updated_at ?? new Date().toISOString(),
   });
 }
@@ -371,6 +459,65 @@ async function saveRemoteDay(record: DayRecord) {
   }
 
   return normalizeRemoteRecord(data);
+}
+
+async function loadRemoteVacations() {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from(REMOTE_VACATIONS_TABLE)
+    .select("id, person, start_date, end_date, notes, updated_at")
+    .order("start_date", { ascending: true })
+    .order("person", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return normalizeVacations(
+    (data ?? []).map((row) => normalizeRemoteVacation(row)),
+  );
+}
+
+async function saveRemoteVacation(vacation: PlannerVacation) {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from(REMOTE_VACATIONS_TABLE)
+    .upsert(serializeRemoteVacation(vacation), { onConflict: "id" })
+    .select("id, person, start_date, end_date, notes, updated_at")
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return normalizeRemoteVacation(data);
+}
+
+async function deleteRemoteVacation(id: string) {
+  const supabase = getSupabaseClient();
+
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from(REMOTE_VACATIONS_TABLE)
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    throw error;
+  }
 }
 
 async function loadRemoteSettings() {
@@ -530,6 +677,29 @@ async function replaceRemoteAllData(snapshot: PlannerBackupSnapshot) {
     }
   }
 
+  const { error: deleteVacationsError } = await supabase
+    .from(REMOTE_VACATIONS_TABLE)
+    .delete()
+    .gte("start_date", "0000-01-01");
+
+  if (deleteVacationsError) {
+    throw deleteVacationsError;
+  }
+
+  const serializedVacations = normalized.vacations.map((vacation) =>
+    serializeRemoteVacation(vacation),
+  );
+
+  if (serializedVacations.length > 0) {
+    const { error: insertVacationsError } = await supabase
+      .from(REMOTE_VACATIONS_TABLE)
+      .upsert(serializedVacations, { onConflict: "id" });
+
+    if (insertVacationsError) {
+      throw insertVacationsError;
+    }
+  }
+
   await saveOrInsertRemoteSettings(normalized.settings);
 }
 
@@ -613,6 +783,24 @@ function readBrowserSettings(): PlannerSettings {
   }
 }
 
+function readBrowserVacations(): PlannerVacation[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  const raw = window.localStorage.getItem(VACATIONS_KEY);
+
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    return normalizeVacations(JSON.parse(raw) as PlannerVacation[]);
+  } catch {
+    return [];
+  }
+}
+
 function writeBrowserSettings(settings: PlannerSettings) {
   if (typeof window === "undefined") {
     return;
@@ -621,6 +809,17 @@ function writeBrowserSettings(settings: PlannerSettings) {
   window.localStorage.setItem(
     SETTINGS_KEY,
     JSON.stringify(normalizeSettings(settings)),
+  );
+}
+
+function writeBrowserVacations(vacations: PlannerVacation[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(
+    VACATIONS_KEY,
+    JSON.stringify(normalizeVacations(vacations)),
   );
 }
 
@@ -699,6 +898,62 @@ export async function saveDay(record: DayRecord): Promise<DayRecord> {
   days[record.dateKey] = normalized;
   writeBrowserStore(days);
   return normalized;
+}
+
+export async function loadVacations(): Promise<PlannerVacation[]> {
+  if (hasSupabaseConfig()) {
+    return normalizeVacations((await loadRemoteVacations()) ?? []);
+  }
+
+  if (typeof window !== "undefined" && window.desktopPlanner?.getVacations) {
+    return normalizeVacations(await window.desktopPlanner.getVacations());
+  }
+
+  return readBrowserVacations();
+}
+
+export async function saveVacation(
+  vacation: PlannerVacation,
+): Promise<PlannerVacation> {
+  const normalized = normalizeVacation({
+    ...vacation,
+    updatedAt: new Date().toISOString(),
+  });
+
+  if (hasSupabaseConfig()) {
+    const saved = await saveRemoteVacation(normalized);
+
+    if (saved) {
+      return normalizeVacation(saved);
+    }
+  }
+
+  if (typeof window !== "undefined" && window.desktopPlanner?.saveVacation) {
+    return normalizeVacation(await window.desktopPlanner.saveVacation(normalized));
+  }
+
+  const nextVacations = readBrowserVacations().filter(
+    (item) => item.id !== normalized.id,
+  );
+  nextVacations.push(normalized);
+  writeBrowserVacations(nextVacations);
+  return normalized;
+}
+
+export async function deleteVacation(id: string): Promise<void> {
+  if (hasSupabaseConfig()) {
+    await deleteRemoteVacation(id);
+    return;
+  }
+
+  if (typeof window !== "undefined" && window.desktopPlanner?.deleteVacation) {
+    await window.desktopPlanner.deleteVacation(id);
+    return;
+  }
+
+  writeBrowserVacations(
+    readBrowserVacations().filter((vacation) => vacation.id !== id),
+  );
 }
 
 export async function loadSettings(): Promise<PlannerSettings> {
@@ -782,6 +1037,7 @@ export async function restoreBackupSnapshot(
 
   writeBrowserStore(normalized.days);
   writeBrowserSettings(normalized.settings);
+  writeBrowserVacations(normalized.vacations);
 }
 
 export async function replacePlannerDays(
@@ -800,6 +1056,7 @@ export async function replacePlannerDays(
       storageMode: "local",
       days: normalizedDays,
       settings: await loadSettings(),
+      vacations: await loadVacations(),
     });
     return;
   }

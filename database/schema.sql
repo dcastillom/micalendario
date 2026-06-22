@@ -17,3 +17,14 @@ CREATE TABLE entries (
 );
 
 CREATE INDEX idx_entries_date_key_order ON entries(date_key, sort_order);
+
+CREATE TABLE vacations (
+  id TEXT PRIMARY KEY,
+  person TEXT NOT NULL DEFAULT '',
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  notes TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_vacations_start_end ON vacations(start_date, end_date);

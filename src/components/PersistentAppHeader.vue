@@ -19,6 +19,7 @@ import {
 } from "../lib/planner-auth";
 import {
   dispatchPlannerOpenImportDialog,
+  dispatchPlannerOpenVacationsDialog,
   dispatchPlannerSettingsUpdated,
   PLANNER_SETTINGS_UPDATED_EVENT,
 } from "../lib/planner-ui-events";
@@ -101,6 +102,13 @@ const canRenderHeaderActions = computed(
   () => isAgendaRoute.value || isReportsRoute.value,
 );
 const canImportReports = computed(
+  () =>
+    isAgendaRoute.value &&
+    isAuthenticated.value &&
+    (headerUserProfile.value?.role === "admin" ||
+      headerUserProfile.value?.role === "editor"),
+);
+const canManageVacations = computed(
   () =>
     isAgendaRoute.value &&
     isAuthenticated.value &&
@@ -204,6 +212,13 @@ const contextualHeaderIconPaths = computed(() =>
       ],
 );
 const importIconPaths = ["M12 4v10", "m8 10 4 4 4-4", "M5 19h14"];
+const vacationsIconPaths = [
+  "M8 3v3",
+  "M16 3v3",
+  "M4.5 8h15",
+  "M6 5h12A1.5 1.5 0 0 1 19.5 6.5v11A1.5 1.5 0 0 1 18 19H6A1.5 1.5 0 0 1 4.5 17.5v-11A1.5 1.5 0 0 1 6 5Z",
+  "m9 13 2 2 4-4",
+];
 const currentUserEmail = computed(() => headerUserProfile.value?.email ?? "");
 const currentUserRoleLabel = computed(() => {
   if (headerUserProfile.value?.role === "admin") {
@@ -425,6 +440,20 @@ function handleDocumentPointerDown(event: Event) {
 
 function handleWindowKeydown(event: KeyboardEvent) {
   if (event.key === "Escape") {
+    if (removeUserDialog.value) {
+      closeRemoveManagedUserDialog();
+      return;
+    }
+
+    if (
+      usersEditorOpen.value ||
+      brandEditorOpen.value ||
+      asignadoEditorOpen.value
+    ) {
+      closeAdminEditors();
+      return;
+    }
+
     closeHeaderMenu();
   }
 }
@@ -503,6 +532,15 @@ function handleImportReportsClick() {
 
   closeHeaderMenu();
   dispatchPlannerOpenImportDialog();
+}
+
+function handleVacationsClick() {
+  if (!canManageVacations.value) {
+    return;
+  }
+
+  closeHeaderMenu();
+  dispatchPlannerOpenVacationsDialog();
 }
 
 function removeBrandLogo() {
@@ -1005,6 +1043,31 @@ onBeforeUnmount(() => {
                 </svg>
               </button>
               <button
+                v-if="canManageVacations"
+                class="company-header__action-button company-header__action-button--icon"
+                type="button"
+                aria-label="Gestionar ausencias"
+                title="Gestionar ausencias"
+                @click="handleVacationsClick"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="company-header__action-icon"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    v-for="path in vacationsIconPaths"
+                    :key="path"
+                    :d="path"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.9"
+                  />
+                </svg>
+              </button>
+              <button
                 v-if="canImportReports"
                 class="company-header__action-button company-header__action-button--icon"
                 type="button"
@@ -1109,6 +1172,30 @@ onBeforeUnmount(() => {
                     />
                   </svg>
                   <span>{{ authActionLabel }}</span>
+                </button>
+                <button
+                  v-if="canManageVacations"
+                  class="company-header__menu-item company-header__menu-item--filters"
+                  type="button"
+                  @click="handleVacationsClick"
+                >
+                  <svg
+                    aria-hidden="true"
+                    class="company-header__menu-item-icon"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      v-for="path in vacationsIconPaths"
+                      :key="path"
+                      :d="path"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="1.9"
+                    />
+                  </svg>
+                  <span>Vacaciones</span>
                 </button>
                 <button
                   v-if="canImportReports"
@@ -1264,6 +1351,14 @@ onBeforeUnmount(() => {
           aria-modal="true"
           aria-labelledby="login-dialog-title"
         >
+          <button
+            class="confirm-dialog__close"
+            type="button"
+            aria-label="Cerrar"
+            @click="closeLoginDialog"
+          >
+            X
+          </button>
           <AuthAccessCard
             embedded
             title="Acceso"
@@ -1273,328 +1368,436 @@ onBeforeUnmount(() => {
         </section>
       </div>
 
-      <section v-if="canManageUsers && usersEditorOpen" class="users-editor">
-        <div class="users-editor__header">
-          <p class="sidebar-copy">
-            Crea nuevos usuarios, dales de baja, reactívalos o elimínalos de
-            forma definitiva. Solo el administrador puede gestionar accesos.
-          </p>
-        </div>
+      <div
+        v-if="canManageUsers && usersEditorOpen"
+        class="confirm-overlay"
+        @click.self="closeAdminEditors"
+      >
+        <section
+          class="confirm-dialog confirm-dialog--management"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="users-editor-title"
+        >
+          <button
+            class="confirm-dialog__close"
+            type="button"
+            aria-label="Cerrar"
+            @click="closeAdminEditors"
+          >
+            X
+          </button>
+          <h2 id="users-editor-title">Gestionar usuarios</h2>
+          <section class="users-editor">
+            <div class="users-editor__header">
+              <p class="sidebar-copy">
+                Crea nuevos usuarios, dales de baja, reactívalos o elimínalos de
+                forma definitiva. Solo el administrador puede gestionar accesos.
+              </p>
+            </div>
 
-        <div class="users-editor__grid">
-          <label class="field">
-            <span class="field-label">Email:</span>
-            <input
-              v-model="userForm.email"
-              type="email"
-              autocomplete="off"
-              placeholder="persona@empresa.com"
-            />
-          </label>
+            <div class="users-editor__grid">
+              <label class="field">
+                <span class="field-label">Email:</span>
+                <input
+                  v-model="userForm.email"
+                  type="email"
+                  autocomplete="off"
+                  placeholder="persona@empresa.com"
+                />
+              </label>
 
-          <label class="field">
-            <span class="field-label">Contraseña inicial:</span>
-            <input
-              v-model="userForm.password"
-              type="password"
-              autocomplete="new-password"
-              placeholder="Mínimo 8 caracteres"
-            />
-          </label>
+              <label class="field">
+                <span class="field-label">Contraseña inicial:</span>
+                <input
+                  v-model="userForm.password"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="Mínimo 8 caracteres"
+                />
+              </label>
 
-          <label class="field">
-            <span class="field-label">Rol:</span>
-            <select v-model="userForm.role">
-              <option value="viewer">Solo vista</option>
-              <option value="editor">Editor</option>
-              <option value="admin">Admin</option>
-            </select>
-          </label>
+              <label class="field">
+                <span class="field-label">Rol:</span>
+                <select v-model="userForm.role">
+                  <option value="viewer">Solo vista</option>
+                  <option value="editor">Editor</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </label>
 
-          <div class="brand-editor__actions users-editor__actions">
-            <button
-              class="primary-button"
-              type="button"
-              :disabled="savingUserEditor"
-              @click="createPlannerUser"
+              <div class="brand-editor__actions users-editor__actions">
+                <button
+                  class="primary-button"
+                  type="button"
+                  :disabled="savingUserEditor"
+                  @click="createPlannerUser"
+                >
+                  {{
+                    savingUserEditor ? "Creando usuario..." : "Crear usuario"
+                  }}
+                </button>
+              </div>
+            </div>
+
+            <p v-if="userEditorError" class="pedido-editor__error">
+              {{ userEditorError }}
+            </p>
+            <p v-else-if="userEditorNotice" class="users-editor__notice">
+              {{ userEditorNotice }}
+            </p>
+
+            <div v-if="loadingManagedUsers" class="users-editor__state">
+              Cargando usuarios...
+            </div>
+            <div
+              v-else-if="plannerAuthState.managedUsers.value.length === 0"
+              class="users-editor__state"
             >
-              {{ savingUserEditor ? "Creando usuario..." : "Crear usuario" }}
+              Todavía no hay usuarios creados.
+            </div>
+            <div v-else class="users-editor__list">
+              <article
+                v-for="managedUser in plannerAuthState.managedUsers.value"
+                :key="managedUser.id"
+                class="users-editor__item"
+              >
+                <div class="users-editor__item-main">
+                  <strong>{{ managedUser.email }}</strong>
+                  <div class="users-editor__badges">
+                    <span class="users-editor__badge users-editor__badge--role">
+                      {{ getRoleLabel(managedUser.role) }}
+                    </span>
+                    <span
+                      class="users-editor__badge"
+                      :class="
+                        managedUser.isActive
+                          ? 'users-editor__badge--active'
+                          : 'users-editor__badge--inactive'
+                      "
+                    >
+                      {{ managedUser.isActive ? "Activo" : "Baja" }}
+                    </span>
+                    <span
+                      v-if="isCurrentManagedUser(managedUser)"
+                      class="users-editor__badge users-editor__badge--self"
+                    >
+                      Tu cuenta
+                    </span>
+                  </div>
+                </div>
+
+                <div class="users-editor__item-actions">
+                  <button
+                    v-if="!isCurrentManagedUser(managedUser)"
+                    class="ghost-button"
+                    type="button"
+                    :disabled="userActionInFlightId === managedUser.id"
+                    @click="
+                      toggleManagedUserActive(
+                        managedUser,
+                        !managedUser.isActive,
+                      )
+                    "
+                  >
+                    {{
+                      userActionInFlightId === managedUser.id
+                        ? "Guardando..."
+                        : managedUser.isActive
+                          ? "Dar de baja"
+                          : "Reactivar"
+                    }}
+                  </button>
+                  <button
+                    v-if="!isCurrentManagedUser(managedUser)"
+                    class="inline-remove"
+                    type="button"
+                    :disabled="userActionInFlightId === managedUser.id"
+                    @click="openRemoveManagedUserDialog(managedUser)"
+                  >
+                    {{
+                      userActionInFlightId === managedUser.id
+                        ? "Guardando..."
+                        : "Eliminar"
+                    }}
+                  </button>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <div class="confirm-dialog__actions">
+            <button
+              class="ghost-button"
+              type="button"
+              @click="closeAdminEditors"
+            >
+              Cerrar
             </button>
           </div>
-        </div>
 
-        <p v-if="userEditorError" class="pedido-editor__error">
-          {{ userEditorError }}
-        </p>
-        <p v-else-if="userEditorNotice" class="users-editor__notice">
-          {{ userEditorNotice }}
-        </p>
-
-        <div v-if="loadingManagedUsers" class="users-editor__state">
-          Cargando usuarios...
-        </div>
-        <div
-          v-else-if="plannerAuthState.managedUsers.value.length === 0"
-          class="users-editor__state"
-        >
-          Todavía no hay usuarios creados.
-        </div>
-        <div v-else class="users-editor__list">
-          <article
-            v-for="managedUser in plannerAuthState.managedUsers.value"
-            :key="managedUser.id"
-            class="users-editor__item"
+          <div
+            v-if="removeUserDialog"
+            class="confirm-overlay"
+            @click.self="closeRemoveManagedUserDialog"
           >
-            <div class="users-editor__item-main">
-              <strong>{{ managedUser.email }}</strong>
-              <div class="users-editor__badges">
-                <span class="users-editor__badge users-editor__badge--role">
-                  {{ getRoleLabel(managedUser.role) }}
-                </span>
-                <span
-                  class="users-editor__badge"
-                  :class="
-                    managedUser.isActive
-                      ? 'users-editor__badge--active'
-                      : 'users-editor__badge--inactive'
-                  "
-                >
-                  {{ managedUser.isActive ? "Activo" : "Baja" }}
-                </span>
-                <span
-                  v-if="isCurrentManagedUser(managedUser)"
-                  class="users-editor__badge users-editor__badge--self"
-                >
-                  Tu cuenta
-                </span>
-              </div>
-            </div>
-
-            <div class="users-editor__item-actions">
+            <section
+              class="confirm-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="remove-user-dialog-title"
+            >
               <button
-                v-if="!isCurrentManagedUser(managedUser)"
-                class="ghost-button"
+                class="confirm-dialog__close"
                 type="button"
-                :disabled="userActionInFlightId === managedUser.id"
-                @click="
-                  toggleManagedUserActive(managedUser, !managedUser.isActive)
-                "
-              >
-                {{
-                  userActionInFlightId === managedUser.id
-                    ? "Guardando..."
-                    : managedUser.isActive
-                      ? "Dar de baja"
-                      : "Reactivar"
-                }}
-              </button>
-              <button
-                v-if="!isCurrentManagedUser(managedUser)"
-                class="inline-remove"
-                type="button"
-                :disabled="userActionInFlightId === managedUser.id"
-                @click="openRemoveManagedUserDialog(managedUser)"
-              >
-                {{
-                  userActionInFlightId === managedUser.id
-                    ? "Guardando..."
-                    : "Eliminar"
-                }}
-              </button>
-            </div>
-          </article>
-        </div>
-
-        <div
-          v-if="removeUserDialog"
-          class="confirm-overlay"
-          @click.self="closeRemoveManagedUserDialog"
-        >
-          <section
-            class="confirm-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="remove-user-dialog-title"
-          >
-            <h2 id="remove-user-dialog-title">
-              ¿Quieres eliminar este usuario definitivamente?
-            </h2>
-            <dl class="confirm-dialog__details">
-              <div>
-                <dt>Email:</dt>
-                <dd>{{ removeUserDialog.email }}</dd>
-              </div>
-              <div>
-                <dt>Rol:</dt>
-                <dd>{{ getRoleLabel(removeUserDialog.role) }}</dd>
-              </div>
-              <div>
-                <dt>Estado actual:</dt>
-                <dd>{{ removeUserDialog.isActive ? "Activo" : "Baja" }}</dd>
-              </div>
-            </dl>
-            <p class="pedido-editor__error">
-              Esta acción eliminará la cuenta de forma permanente y no se puede
-              deshacer.
-            </p>
-            <div class="confirm-dialog__actions">
-              <button
-                class="ghost-button"
-                type="button"
-                :disabled="userActionInFlightId === removeUserDialog.id"
+                aria-label="Cerrar"
                 @click="closeRemoveManagedUserDialog"
               >
-                Cancelar
+                X
               </button>
+              <h2 id="remove-user-dialog-title">
+                ¿Quieres eliminar este usuario definitivamente?
+              </h2>
+              <dl class="confirm-dialog__details">
+                <div>
+                  <dt>Email:</dt>
+                  <dd>{{ removeUserDialog.email }}</dd>
+                </div>
+                <div>
+                  <dt>Rol:</dt>
+                  <dd>{{ getRoleLabel(removeUserDialog.role) }}</dd>
+                </div>
+                <div>
+                  <dt>Estado actual:</dt>
+                  <dd>{{ removeUserDialog.isActive ? "Activo" : "Baja" }}</dd>
+                </div>
+              </dl>
+              <p class="pedido-editor__error">
+                Esta acción eliminará la cuenta de forma permanente y no se
+                puede deshacer.
+              </p>
+              <div class="confirm-dialog__actions">
+                <button
+                  class="ghost-button"
+                  type="button"
+                  :disabled="userActionInFlightId === removeUserDialog.id"
+                  @click="closeRemoveManagedUserDialog"
+                >
+                  Cancelar
+                </button>
+                <button
+                  class="inline-remove"
+                  type="button"
+                  :disabled="userActionInFlightId === removeUserDialog.id"
+                  @click="removeManagedUserPermanently(removeUserDialog)"
+                >
+                  {{
+                    userActionInFlightId === removeUserDialog.id
+                      ? "Eliminando..."
+                      : "Eliminar definitivamente"
+                  }}
+                </button>
+              </div>
+            </section>
+          </div>
+        </section>
+      </div>
+
+      <div
+        v-if="canEditBranding && brandEditorOpen"
+        class="confirm-overlay"
+        @click.self="closeAdminEditors"
+      >
+        <section
+          class="confirm-dialog confirm-dialog--management"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="brand-editor-title"
+        >
+          <button
+            class="confirm-dialog__close"
+            type="button"
+            aria-label="Cerrar"
+            @click="closeAdminEditors"
+          >
+            X
+          </button>
+          <h2 id="brand-editor-title">Editar cabecera</h2>
+          <section class="brand-editor">
+            <div class="brand-editor__header">
+              <p class="sidebar-copy">
+                Personaliza la cabecera visible en la app y en los informes
+                impresos con el nombre y el logotipo de tu empresa.
+              </p>
+            </div>
+
+            <div class="brand-editor__grid">
+              <label class="field">
+                <span class="field-label">Nombre de empresa:</span>
+                <input
+                  v-model="brandForm.companyName"
+                  type="text"
+                  placeholder="Ej. Carpintería Martín"
+                />
+              </label>
+
+              <label class="field field--wide">
+                <span class="field-label">Subtítulo:</span>
+                <input
+                  v-model="brandForm.companySubtitle"
+                  type="text"
+                  placeholder="Ej. Instalaciones y montaje"
+                />
+              </label>
+
+              <label class="field">
+                <span class="field-label">Logotipo:</span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                  @change="handleBrandLogoChange"
+                />
+              </label>
+
+              <div class="brand-editor__actions">
+                <button
+                  class="ghost-button"
+                  type="button"
+                  :disabled="
+                    !brandForm.companyLogoDataUrl || savingBrandSettings
+                  "
+                  @click="removeBrandLogo"
+                >
+                  Quitar logotipo
+                </button>
+                <button
+                  class="primary-button"
+                  type="button"
+                  :disabled="savingBrandSettings"
+                  @click="saveBranding"
+                >
+                  {{
+                    savingBrandSettings
+                      ? "Guardando cabecera..."
+                      : "Guardar cabecera"
+                  }}
+                </button>
+              </div>
+            </div>
+
+            <p v-if="brandEditorError" class="pedido-editor__error">
+              {{ brandEditorError }}
+            </p>
+          </section>
+
+          <div class="confirm-dialog__actions">
+            <button
+              class="ghost-button"
+              type="button"
+              @click="closeAdminEditors"
+            >
+              Cerrar
+            </button>
+          </div>
+        </section>
+      </div>
+
+      <div
+        v-if="canEditBranding && asignadoEditorOpen"
+        class="confirm-overlay"
+        @click.self="closeAdminEditors"
+      >
+        <section
+          class="confirm-dialog confirm-dialog--management"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="asignado-editor-title"
+        >
+          <button
+            class="confirm-dialog__close"
+            type="button"
+            aria-label="Cerrar"
+            @click="closeAdminEditors"
+          >
+            X
+          </button>
+          <h2 id="asignado-editor-title">Editar asignados</h2>
+          <section class="pedido-editor">
+            <div class="pedido-editor__header">
+              <p class="pedido-editor__copy">
+                Añade o elimina asignados o laborantes
+              </p>
+            </div>
+
+            <div class="pedido-editor__form">
+              <label class="field">
+                <input
+                  v-model="newAsignadoOption"
+                  type="text"
+                  placeholder="Nombre de la opción"
+                  @keydown.enter.prevent="addAsignadoOption"
+                />
+              </label>
+
               <button
-                class="inline-remove"
+                class="primary-button"
                 type="button"
-                :disabled="userActionInFlightId === removeUserDialog.id"
-                @click="removeManagedUserPermanently(removeUserDialog)"
+                :disabled="savingAsignadoSettings"
+                @click="addAsignadoOption"
+              >
+                Añadir opción
+              </button>
+            </div>
+
+            <p v-if="asignadoOptionError" class="pedido-editor__error">
+              {{ asignadoOptionError }}
+            </p>
+
+            <div class="pedido-editor__list">
+              <article
+                v-for="asignadoOption in asignadoOptionsDraft"
+                :key="asignadoOption"
+                class="pedido-chip"
+              >
+                <span>{{ asignadoOption }}</span>
+                <button
+                  class="pedido-chip__remove"
+                  type="button"
+                  :disabled="savingAsignadoSettings"
+                  @click="removeAsignadoOption(asignadoOption)"
+                >
+                  Eliminar
+                </button>
+              </article>
+            </div>
+
+            <div class="brand-editor__actions">
+              <button
+                class="primary-button"
+                type="button"
+                :disabled="savingAsignadoSettings"
+                @click="saveAsignadoOptions"
               >
                 {{
-                  userActionInFlightId === removeUserDialog.id
-                    ? "Eliminando..."
-                    : "Eliminar definitivamente"
+                  savingAsignadoSettings
+                    ? "Guardando asignados..."
+                    : "Guardar asignados"
                 }}
               </button>
             </div>
           </section>
-        </div>
-      </section>
 
-      <section v-if="canEditBranding && brandEditorOpen" class="brand-editor">
-        <div class="brand-editor__header">
-          <p class="sidebar-copy">
-            Personaliza la cabecera visible en la app y en los informes impresos
-            con el nombre y el logotipo de tu empresa.
-          </p>
-        </div>
-
-        <div class="brand-editor__grid">
-          <label class="field">
-            <span class="field-label">Nombre de empresa:</span>
-            <input
-              v-model="brandForm.companyName"
-              type="text"
-              placeholder="Ej. Carpintería Martín"
-            />
-          </label>
-
-          <label class="field field--wide">
-            <span class="field-label">Subtítulo:</span>
-            <input
-              v-model="brandForm.companySubtitle"
-              type="text"
-              placeholder="Ej. Instalaciones y montaje"
-            />
-          </label>
-
-          <label class="field">
-            <span class="field-label">Logotipo:</span>
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/svg+xml"
-              @change="handleBrandLogoChange"
-            />
-          </label>
-
-          <div class="brand-editor__actions">
+          <div class="confirm-dialog__actions">
             <button
               class="ghost-button"
               type="button"
-              :disabled="!brandForm.companyLogoDataUrl || savingBrandSettings"
-              @click="removeBrandLogo"
+              @click="closeAdminEditors"
             >
-              Quitar logotipo
-            </button>
-            <button
-              class="primary-button"
-              type="button"
-              :disabled="savingBrandSettings"
-              @click="saveBranding"
-            >
-              {{
-                savingBrandSettings
-                  ? "Guardando cabecera..."
-                  : "Guardar cabecera"
-              }}
+              Cerrar
             </button>
           </div>
-        </div>
-
-        <p v-if="brandEditorError" class="pedido-editor__error">
-          {{ brandEditorError }}
-        </p>
-      </section>
-
-      <section
-        v-if="canEditBranding && asignadoEditorOpen"
-        class="pedido-editor"
-      >
-        <div class="pedido-editor__header">
-          <p class="pedido-editor__copy">
-            Añade o elimina asignados o laborantes
-          </p>
-        </div>
-
-        <div class="pedido-editor__form">
-          <label class="field">
-            <input
-              v-model="newAsignadoOption"
-              type="text"
-              placeholder="Nombre de la opción"
-              @keydown.enter.prevent="addAsignadoOption"
-            />
-          </label>
-
-          <button
-            class="primary-button"
-            type="button"
-            :disabled="savingAsignadoSettings"
-            @click="addAsignadoOption"
-          >
-            Añadir opción
-          </button>
-        </div>
-
-        <p v-if="asignadoOptionError" class="pedido-editor__error">
-          {{ asignadoOptionError }}
-        </p>
-
-        <div class="pedido-editor__list">
-          <article
-            v-for="asignadoOption in asignadoOptionsDraft"
-            :key="asignadoOption"
-            class="pedido-chip"
-          >
-            <span>{{ asignadoOption }}</span>
-            <button
-              class="pedido-chip__remove"
-              type="button"
-              :disabled="savingAsignadoSettings"
-              @click="removeAsignadoOption(asignadoOption)"
-            >
-              Eliminar
-            </button>
-          </article>
-        </div>
-
-        <div class="brand-editor__actions">
-          <button
-            class="primary-button"
-            type="button"
-            :disabled="savingAsignadoSettings"
-            @click="saveAsignadoOptions"
-          >
-            {{
-              savingAsignadoSettings
-                ? "Guardando asignados..."
-                : "Guardar asignados"
-            }}
-          </button>
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
   </div>
 </template>

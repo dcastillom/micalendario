@@ -7,6 +7,8 @@ export const PLANNER_AGENDA_HEADER_STATE_EVENT = "planner:agenda-header-state";
 export const PLANNER_AGENDA_REFERENCE_FILTER_EVENT =
   "planner:agenda-reference-filter";
 export const PLANNER_OPEN_IMPORT_DIALOG_EVENT = "planner:open-import-dialog";
+export const PLANNER_OPEN_VACATIONS_DIALOG_EVENT =
+  "planner:open-vacations-dialog";
 
 export type PlannerAgendaViewMode = "day" | "month";
 
@@ -79,4 +81,12 @@ export function dispatchPlannerOpenImportDialog() {
   }
 
   window.dispatchEvent(new Event(PLANNER_OPEN_IMPORT_DIALOG_EVENT));
+}
+
+export function dispatchPlannerOpenVacationsDialog() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.dispatchEvent(new Event(PLANNER_OPEN_VACATIONS_DIALOG_EVENT));
 }

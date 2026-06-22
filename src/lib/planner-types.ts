@@ -21,6 +21,15 @@ export interface DayRecord {
   localidad: string;
 }
 
+export interface PlannerVacation {
+  id: string;
+  person: string;
+  startDate: string;
+  endDate: string;
+  notes: string;
+  updatedAt: string;
+}
+
 export interface PlannerSettings {
   asignadoOptions: string[];
   companyName: string;

@@ -1381,15 +1381,19 @@ button {
   display: grid;
   place-items: center;
   padding: 24px;
+  overflow: auto;
   background: rgba(30, 27, 22, 0.32);
   backdrop-filter: blur(8px);
 }
 
 .confirm-dialog {
+  position: relative;
   width: min(100%, 460px);
+  max-height: calc(100vh - 48px);
   display: grid;
   gap: 18px;
   padding: 24px;
+  overflow: auto;
   border: 1px solid rgba(255, 255, 255, 0.48);
   border-radius: 28px;
   background: linear-gradient(
@@ -1398,6 +1402,40 @@ button {
     rgba(244, 234, 220, 0.95)
   );
   box-shadow: 0 28px 80px rgba(59, 40, 18, 0.24);
+}
+
+.confirm-dialog__close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid rgba(35, 58, 51, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.confirm-dialog__close:hover {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(35, 58, 51, 0.28);
+  transform: translateY(-1px);
+}
+
+.confirm-dialog--management {
+  width: min(960px, calc(100vw - 2rem));
 }
 
 .confirm-dialog__eyebrow {
@@ -1457,7 +1495,7 @@ button {
 }
 
 .confirm-dialog--import {
-  width: min(100%, 900px);
+  width: min(960px, calc(100vw - 2rem));
 }
 
 .import-dialog__meta {

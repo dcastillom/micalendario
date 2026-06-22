@@ -17,13 +17,16 @@ import {
 import {
   createEmptyEntry,
   createEmptyDay,
+  createEmptyVacation,
   createDefaultPlannerSettings,
+  deleteVacation,
   DuplicateReferenceError,
   findDuplicateReferenceConflicts,
   loadAllDays,
   loadDay,
   loadDaysForMonth,
   loadSettings,
+  loadVacations,
   normalizePlannerReference,
   openDesktopBackupFolder,
   replacePlannerDays,
@@ -31,6 +34,7 @@ import {
   selectDesktopBackup,
   saveDesktopBackup,
   saveDay,
+  saveVacation,
 } from "../lib/planner-client";
 import { SPANISH_LOCALITIES } from "../lib/spanish-municipalities";
 import {
@@ -40,12 +44,14 @@ import {
 import {
   dispatchPlannerSettingsUpdated,
   PLANNER_OPEN_IMPORT_DIALOG_EVENT,
+  PLANNER_OPEN_VACATIONS_DIALOG_EVENT,
   PLANNER_SETTINGS_UPDATED_EVENT,
 } from "../lib/planner-ui-events";
 import type {
   DayEntry,
   DayRecord,
   PlannerSettings,
+  PlannerVacation,
 } from "../lib/planner-types";
 
 const AUTO_BACKUP_INTERVAL_MS = 30 * 60 * 1000;
@@ -103,6 +109,49 @@ function formatTimestamp(value: string) {
   }).format(new Date(value));
 }
 
+function isValidDateKey(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function enumerateDateKeys(startDate: string, endDate: string) {
+  if (!isValidDateKey(startDate) || !isValidDateKey(endDate)) {
+    return [];
+  }
+
+  const start = new Date(`${startDate}T12:00:00`);
+  const end = new Date(`${endDate}T12:00:00`);
+
+  if (
+    Number.isNaN(start.getTime()) ||
+    Number.isNaN(end.getTime()) ||
+    start > end
+  ) {
+    return [];
+  }
+
+  const keys: string[] = [];
+  const cursor = new Date(start);
+
+  while (cursor <= end) {
+    const year = cursor.getFullYear();
+    const month = `${cursor.getMonth() + 1}`.padStart(2, "0");
+    const day = `${cursor.getDate()}`.padStart(2, "0");
+    keys.push(`${year}-${month}-${day}`);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return keys;
+}
+
+function vacationIncludesDate(vacation: PlannerVacation, dateKey: string) {
+  return (
+    isValidDateKey(vacation.startDate) &&
+    isValidDateKey(vacation.endDate) &&
+    vacation.startDate <= dateKey &&
+    vacation.endDate >= dateKey
+  );
+}
+
 function getXlsxModule() {
   return xlsxModule;
 }
@@ -119,6 +168,7 @@ const storageModeStatus = ref<StorageModeStatus>("checking");
 const monthRecords = ref<Record<string, DayRecord>>({});
 const allRecords = ref<Record<string, DayRecord>>({});
 const persistedAllRecords = ref<Record<string, DayRecord>>({});
+const vacations = ref<PlannerVacation[]>([]);
 const plannerSettings = ref<PlannerSettings>(createDefaultPlannerSettings());
 const asignadoOptions = ref<string[]>([]);
 const referenceFilter = ref("");
@@ -146,6 +196,12 @@ const importFileName = ref("");
 const importError = ref("");
 const importSummary = ref("");
 const importBusy = ref(false);
+const vacationDialogOpen = ref(false);
+const vacationDraft = ref<PlannerVacation>(
+  createVacationDraftForDate(selectedDate.value),
+);
+const vacationBusy = ref(false);
+const vacationError = ref("");
 const unsavedDayDrafts = ref<Record<string, DayRecord>>({});
 const isEditingTextField = ref(false);
 
@@ -174,6 +230,21 @@ const monthActiveDays = computed(
       (record) => record.entries.length > 0,
     ).length,
 );
+const vacationDatesMap = computed(() => {
+  const map = new Map<string, PlannerVacation[]>();
+
+  vacations.value.forEach((vacation) => {
+    enumerateDateKeys(vacation.startDate, vacation.endDate).forEach(
+      (dateKey) => {
+        const currentVacations = map.get(dateKey) ?? [];
+        currentVacations.push(vacation);
+        map.set(dateKey, currentVacations);
+      },
+    );
+  });
+
+  return map;
+});
 const monthEntryCount = computed(() =>
   Object.values(monthRecords.value).reduce(
     (total, record) => total + record.entries.length,
@@ -198,6 +269,20 @@ const monthLastSavedLabel = computed(() => {
 const isCurrentViewLoading = computed(() =>
   viewMode.value === "day" ? loading.value : monthLoading.value,
 );
+const selectedDateVacations = computed(() =>
+  vacations.value.filter((vacation) =>
+    vacationIncludesDate(vacation, selectedDate.value),
+  ),
+);
+const hasSelectedDateVacations = computed(
+  () => selectedDateVacations.value.length > 0,
+);
+const selectedDateVacationBadges = computed(() =>
+  selectedDateVacations.value.map((vacation) => ({
+    id: vacation.id,
+    label: `Ausencia ${vacation.person.trim()}`.trim(),
+  })),
+);
 const monthCalendarCells = computed(() => {
   const [year, month] = monthKey.value.split("-").map(Number);
   const firstDay = new Date(year, month - 1, 1, 12, 0, 0);
@@ -208,6 +293,7 @@ const monthCalendarCells = computed(() => {
     day: number;
     isToday: boolean;
     record: DayRecord | null;
+    vacations: PlannerVacation[];
   }> = [];
 
   for (let index = 0; index < leadingEmptyCells; index += 1) {
@@ -221,6 +307,7 @@ const monthCalendarCells = computed(() => {
       day,
       isToday: dateKey === todayKey(),
       record: monthRecords.value[dateKey] ?? null,
+      vacations: vacationDatesMap.value.get(dateKey) ?? [],
     });
   }
 
@@ -487,6 +574,38 @@ function getAsignadoSelectOptions(currentValue: string) {
   }
 
   return [currentValue, ...asignadoOptions.value];
+}
+
+function getVacationsForPersonOnSelectedDate(person: string) {
+  const normalizedPerson = person.trim().toLocaleLowerCase("es-ES");
+
+  if (!normalizedPerson) {
+    return [];
+  }
+
+  return selectedDateVacations.value.filter(
+    (vacation) =>
+      vacation.person.trim().toLocaleLowerCase("es-ES") === normalizedPerson,
+  );
+}
+
+function getVacationWarning(person: string) {
+  const matchingVacations = getVacationsForPersonOnSelectedDate(person);
+
+  if (matchingVacations.length === 0) {
+    return "";
+  }
+
+  const [vacation] = matchingVacations;
+  return `${vacation.person} está de vacaciones del ${formatHeader(vacation.startDate)} al ${formatHeader(vacation.endDate)}.`;
+}
+
+function createVacationDraftForDate(dateKey: string) {
+  return {
+    ...createEmptyVacation(),
+    startDate: dateKey,
+    endDate: dateKey,
+  };
 }
 
 function getEntryReferenceError(entryId: string) {
@@ -980,6 +1099,29 @@ function openImportDialog() {
 
 function handleOpenImportDialog() {
   openImportDialog();
+}
+
+function openVacationsDialog() {
+  if (!canEditReports.value) {
+    return;
+  }
+
+  vacationDraft.value = createVacationDraftForDate(selectedDate.value);
+  vacationError.value = "";
+  vacationDialogOpen.value = true;
+}
+
+function handleOpenVacationsDialog() {
+  openVacationsDialog();
+}
+
+function closeVacationsDialog() {
+  if (vacationBusy.value) {
+    return;
+  }
+
+  vacationDialogOpen.value = false;
+  vacationError.value = "";
 }
 
 function closeImportDialog() {
@@ -1616,6 +1758,99 @@ async function loadAllRecords() {
   }
 }
 
+async function loadAllVacations() {
+  try {
+    vacations.value = await loadVacations();
+    vacationError.value = "";
+  } catch (error) {
+    console.error(error);
+    vacationError.value = "No se pudieron cargar las vacaciones guardadas.";
+    throw error;
+  }
+}
+
+async function submitVacation() {
+  if (!canEditReports.value || vacationBusy.value) {
+    return;
+  }
+
+  const normalizedPerson = vacationDraft.value.person.trim();
+  const startDate = vacationDraft.value.startDate.trim();
+  const endDate = vacationDraft.value.endDate.trim();
+
+  if (!normalizedPerson) {
+    vacationError.value =
+      "Selecciona una persona para registrar las vacaciones.";
+    return;
+  }
+
+  if (!isValidDateKey(startDate) || !isValidDateKey(endDate)) {
+    vacationError.value = "Selecciona un rango de fechas válido.";
+    return;
+  }
+
+  if (startDate > endDate) {
+    vacationError.value =
+      "La fecha de inicio no puede ser posterior a la final.";
+    return;
+  }
+
+  vacationBusy.value = true;
+  vacationError.value = "";
+
+  try {
+    await saveVacation({
+      ...vacationDraft.value,
+      person: normalizedPerson,
+      startDate,
+      endDate,
+    });
+    await loadAllVacations();
+    vacationDraft.value = createVacationDraftForDate(selectedDate.value);
+    vacationDialogOpen.value = false;
+    queueDesktopBackup("vacation-save");
+  } catch (error) {
+    console.error("No se pudieron guardar las vacaciones.", error);
+    vacationError.value =
+      error instanceof Error
+        ? error.message
+        : "No se pudieron guardar las vacaciones.";
+  } finally {
+    vacationBusy.value = false;
+  }
+}
+
+async function removeVacationRecord(vacationId: string) {
+  if (!canEditReports.value || vacationBusy.value) {
+    return;
+  }
+
+  const confirmed = window.confirm(
+    "Se eliminará este periodo de vacaciones. ¿Quieres continuar?",
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  vacationBusy.value = true;
+  vacationError.value = "";
+
+  try {
+    await deleteVacation(vacationId);
+    await loadAllVacations();
+    queueDesktopBackup("vacation-delete");
+  } catch (error) {
+    console.error("No se pudieron eliminar las vacaciones.", error);
+    vacationError.value =
+      error instanceof Error
+        ? error.message
+        : "No se pudieron eliminar las vacaciones.";
+  } finally {
+    vacationBusy.value = false;
+  }
+}
+
 async function runDesktopBackup(reason: string) {
   if (
     !canManageApp.value ||
@@ -1633,12 +1868,17 @@ async function runDesktopBackup(reason: string) {
   backupInFlight = true;
 
   try {
-    const [days, settings] = await Promise.all([loadAllDays(), loadSettings()]);
+    const [days, settings, storedVacations] = await Promise.all([
+      loadAllDays(),
+      loadSettings(),
+      loadVacations(),
+    ]);
     await saveDesktopBackup({
       createdAt: new Date().toISOString(),
       storageMode: storageModeStatus.value,
       days,
       settings,
+      vacations: storedVacations,
     });
     console.info("[backup] completed", reason);
   } catch (error) {
@@ -1730,6 +1970,7 @@ async function restoreBackup() {
     await Promise.all([
       refreshStorageMode(),
       loadAllRecords(),
+      loadAllVacations(),
       loadAsignadoOptions(),
       loadSelectedMonth(),
       loadSelectedDay(),
@@ -1822,6 +2063,7 @@ function resetPlannerDataState() {
   persistedAllRecords.value = {};
   plannerSettings.value = createDefaultPlannerSettings();
   asignadoOptions.value = [];
+  vacations.value = [];
   removeDialog.value = null;
   moveDialog.value = null;
   moveDialogError.value = "";
@@ -1832,6 +2074,10 @@ function resetPlannerDataState() {
   importError.value = "";
   importSummary.value = "";
   importBusy.value = false;
+  vacationDialogOpen.value = false;
+  vacationDraft.value = createVacationDraftForDate(selectedDate.value);
+  vacationBusy.value = false;
+  vacationError.value = "";
   unsavedDayDrafts.value = {};
 }
 
@@ -1845,6 +2091,7 @@ async function initializePlannerDataForSession() {
   try {
     await refreshStorageMode();
     await loadAllRecords();
+    await loadAllVacations();
     await loadAsignadoOptions();
     await Promise.all([loadSelectedDay(), loadSelectedMonth()]);
     plannerDataLoadedForSession.value = true;
@@ -1903,40 +2150,51 @@ function openDayFromReferenceResult(dateKey: string) {
   openDayFromMonth(dateKey);
 }
 
-function summarizeDay(record: DayRecord | null) {
-  if (!record || record.entries.length === 0) {
+function summarizeDay(
+  record: DayRecord | null,
+  dayVacations: PlannerVacation[] = [],
+) {
+  if ((!record || record.entries.length === 0) && dayVacations.length === 0) {
     return {
       countLabel: "Sin actividad",
       preview: [],
       extraCount: 0,
+      vacationCount: 0,
+      vacationBadges: [] as string[],
     };
   }
 
-  const preview = record.entries
-    .slice(0, MONTH_CARD_PREVIEW_LIMIT)
-    .map((entry) => ({
-      id: entry.id,
-      isOk: entry.plano === "si" && entry.entregado,
-      referencia: entry.referencia.trim() || "Sin referencia",
-      asignado: entry.asignado.trim() || "Sin asignar",
-      hasPlanos: entry.plano === "si",
-      plano:
-        entry.plano === "si"
-          ? "Con planos"
-          : entry.plano === "no"
-            ? "Sin planos"
-            : "Sin planos",
-      localidad: entry.localidad.trim(),
-      isEntregado: entry.entregado,
-      entregado: entry.entregado ? "Entregado" : "No entregado",
-    }));
+  const entries = record?.entries ?? [];
+  const preview = entries.slice(0, MONTH_CARD_PREVIEW_LIMIT).map((entry) => ({
+    id: entry.id,
+    isOk: entry.plano === "si" && entry.entregado,
+    referencia: entry.referencia.trim() || "Sin referencia",
+    asignado: entry.asignado.trim() || "Sin asignar",
+    hasPlanos: entry.plano === "si",
+    plano:
+      entry.plano === "si"
+        ? "Con planos"
+        : entry.plano === "no"
+          ? "Sin planos"
+          : "Sin planos",
+    localidad: entry.localidad.trim(),
+    isEntregado: entry.entregado,
+    entregado: entry.entregado ? "Entregado" : "No entregado",
+  }));
+
+  const vacationBadges = dayVacations
+    .map((vacation) => vacation.person.trim())
+    .filter(Boolean)
+    .map((person) => `Ausencia ${person}`);
 
   return {
-    countLabel: `${record.entries.length} ${
-      record.entries.length === 1 ? "informe" : "informes"
+    countLabel: `${entries.length} ${
+      entries.length === 1 ? "informe" : "informes"
     }`,
     preview,
-    extraCount: Math.max(0, record.entries.length - preview.length),
+    extraCount: Math.max(0, entries.length - preview.length),
+    vacationCount: dayVacations.length,
+    vacationBadges,
   };
 }
 
@@ -2219,6 +2477,11 @@ async function confirmMoveEntry() {
 }
 
 function handleWindowKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape" && vacationDialogOpen.value) {
+    closeVacationsDialog();
+    return;
+  }
+
   if (event.key === "Escape" && moveDialog.value) {
     closeMoveDialog();
     return;
@@ -2232,6 +2495,11 @@ function handleWindowKeydown(event: KeyboardEvent) {
 watch(selectedDate, (nextDate, previousDate) => {
   if (!hasInitialized.value) {
     return;
+  }
+
+  if (!vacationDraft.value.person.trim()) {
+    vacationDraft.value.startDate = nextDate;
+    vacationDraft.value.endDate = nextDate;
   }
 
   void loadSelectedDay(nextDate);
@@ -2307,6 +2575,10 @@ onMounted(() => {
     handleOpenImportDialog,
   );
   window.addEventListener(
+    PLANNER_OPEN_VACATIONS_DIALOG_EVENT,
+    handleOpenVacationsDialog,
+  );
+  window.addEventListener(
     PLANNER_SETTINGS_UPDATED_EVENT,
     handlePlannerSettingsUpdated,
   );
@@ -2327,6 +2599,10 @@ onBeforeUnmount(() => {
   window.removeEventListener(
     PLANNER_OPEN_IMPORT_DIALOG_EVENT,
     handleOpenImportDialog,
+  );
+  window.removeEventListener(
+    PLANNER_OPEN_VACATIONS_DIALOG_EVENT,
+    handleOpenVacationsDialog,
   );
   window.removeEventListener(
     PLANNER_SETTINGS_UPDATED_EVENT,
@@ -2366,6 +2642,9 @@ onBeforeUnmount(() => {
       </div>
       <p v-if="visiblePlannerLoadError" class="sheet-alert sheet-alert--error">
         {{ visiblePlannerLoadError }}
+      </p>
+      <p v-if="vacationError" class="sheet-alert sheet-alert--error">
+        {{ vacationError }}
       </p>
       <div
         v-if="canCleanPersistedDuplicates"
@@ -2483,7 +2762,21 @@ onBeforeUnmount(() => {
         class="month-summary month-summary--day"
       >
         <div class="month-summary__header">
-          <h3>{{ formattedTitle }}</h3>
+          <div class="month-summary__copy">
+            <h3>{{ formattedTitle }}</h3>
+            <!-- <div
+              v-if="selectedDateVacationBadges.length > 0"
+              class="day-vacation-badges"
+            >
+              <span
+                v-for="vacationBadge in selectedDateVacationBadges"
+                :key="vacationBadge.id"
+                class="day-vacation-badge"
+              >
+                {{ vacationBadge.label }}
+              </span>
+            </div> -->
+          </div>
           <div
             v-if="canEditReports"
             class="month-summary__tools month-summary__tools--day"
@@ -2576,14 +2869,35 @@ onBeforeUnmount(() => {
               >
                 <span class="month-card__day">{{ cell.day }}</span>
                 <span class="month-card__count">{{
-                  summarizeDay(cell.record).countLabel
+                  summarizeDay(cell.record, cell.vacations).countLabel
                 }}</span>
+                <div
+                  v-if="
+                    summarizeDay(cell.record, cell.vacations).vacationBadges
+                      .length > 0
+                  "
+                  class="month-card__vacations-list"
+                >
+                  <span
+                    v-for="vacationBadge in summarizeDay(
+                      cell.record,
+                      cell.vacations,
+                    ).vacationBadges"
+                    :key="vacationBadge"
+                    class="month-card__vacations"
+                  >
+                    {{ vacationBadge }}
+                  </span>
+                </div>
                 <ul
-                  v-if="summarizeDay(cell.record).preview.length > 0"
+                  v-if="
+                    summarizeDay(cell.record, cell.vacations).preview.length > 0
+                  "
                   class="month-card__list"
                 >
                   <li
-                    v-for="item in summarizeDay(cell.record).preview"
+                    v-for="item in summarizeDay(cell.record, cell.vacations)
+                      .preview"
                     :key="item.id"
                   >
                     <div class="month-card__entry-top">
@@ -2624,10 +2938,13 @@ onBeforeUnmount(() => {
                   </li>
                 </ul>
                 <span
-                  v-if="summarizeDay(cell.record).extraCount > 0"
+                  v-if="
+                    summarizeDay(cell.record, cell.vacations).extraCount > 0
+                  "
                   class="month-card__more"
                 >
-                  +{{ summarizeDay(cell.record).extraCount }} más
+                  +{{ summarizeDay(cell.record, cell.vacations).extraCount }}
+                  más
                 </span>
               </button>
             </template>
@@ -2638,6 +2955,18 @@ onBeforeUnmount(() => {
       <div v-else-if="viewMode === 'day'" class="sheet-table-wrap">
         <div v-if="dayRecord.entries.length === 0" class="empty-day">
           <p class="empty-day__title">Este día no tiene informes.</p>
+          <div
+            v-if="selectedDateVacationBadges.length > 0"
+            class="day-vacation-badges day-vacation-badges--empty"
+          >
+            <span
+              v-for="vacationBadge in selectedDateVacationBadges"
+              :key="vacationBadge.id"
+              class="day-vacation-badge"
+            >
+              {{ vacationBadge.label }}
+            </span>
+          </div>
           <p class="empty-day__copy">
             {{
               canEditReports
@@ -2727,6 +3056,9 @@ onBeforeUnmount(() => {
                     }}
                   </option>
                 </select>
+                <p v-if="getVacationWarning(entry.asignado)" class="field-hint">
+                  {{ getVacationWarning(entry.asignado) }}
+                </p>
               </label>
 
               <label class="field field--laborante">
@@ -2747,6 +3079,12 @@ onBeforeUnmount(() => {
                     }}
                   </option>
                 </select>
+                <p
+                  v-if="getVacationWarning(entry.laborante)"
+                  class="field-hint"
+                >
+                  {{ getVacationWarning(entry.laborante) }}
+                </p>
               </label>
 
               <label class="field field--fecha-campo">
@@ -2827,6 +3165,154 @@ onBeforeUnmount(() => {
     </section>
 
     <div
+      v-if="canEditReports && vacationDialogOpen"
+      class="confirm-overlay"
+      @click.self="closeVacationsDialog"
+    >
+      <section
+        class="confirm-dialog confirm-dialog--import vacation-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="vacation-dialog-title"
+      >
+        <button
+          class="confirm-dialog__close"
+          type="button"
+          aria-label="Cerrar"
+          @click="closeVacationsDialog"
+        >
+          X
+        </button>
+        <h2 id="vacation-dialog-title">Gestionar ausencias</h2>
+        <p class="pedido-editor__copy">
+          Registra vacaciones o ausencias por persona y rango de fechas. Sólo
+          está disponible para usuarios con permiso de edición.
+        </p>
+
+        <div class="vacation-panel">
+          <div class="vacation-panel__header">
+            <div>
+              <h4>Vacaciones del día seleccionado</h4>
+              <p v-if="hasSelectedDateVacations" class="vacation-panel__copy">
+                {{ selectedDateVacations.length }}
+                {{
+                  selectedDateVacations.length === 1
+                    ? "persona no está disponible."
+                    : "personas no están disponibles."
+                }}
+              </p>
+              <p v-else class="vacation-panel__copy">
+                No hay vacaciones registradas para este día.
+              </p>
+            </div>
+          </div>
+
+          <div v-if="selectedDateVacations.length" class="vacation-list">
+            <article
+              v-for="vacation in selectedDateVacations"
+              :key="vacation.id"
+              class="vacation-card"
+            >
+              <div class="vacation-card__top">
+                <strong>{{ vacation.person }}</strong>
+                <button
+                  class="inline-remove"
+                  type="button"
+                  :disabled="vacationBusy"
+                  @click="removeVacationRecord(vacation.id)"
+                >
+                  Eliminar
+                </button>
+              </div>
+              <p>
+                Del {{ formatHeader(vacation.startDate) }} al
+                {{ formatHeader(vacation.endDate) }}
+              </p>
+              <p v-if="vacation.notes" class="vacation-card__notes">
+                {{ vacation.notes }}
+              </p>
+            </article>
+          </div>
+
+          <form class="vacation-form" @submit.prevent="submitVacation">
+            <label class="field">
+              <span class="field-label">Persona:</span>
+              <select v-model="vacationDraft.person" :disabled="vacationBusy">
+                <option value="">Selecciona una persona</option>
+                <option
+                  v-for="personOption in asignadoOptions"
+                  :key="personOption"
+                  :value="personOption"
+                >
+                  {{ personOption }}
+                </option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field-label">Desde:</span>
+              <input
+                v-model="vacationDraft.startDate"
+                :disabled="vacationBusy"
+                type="date"
+              />
+            </label>
+
+            <label class="field">
+              <span class="field-label">Hasta:</span>
+              <input
+                v-model="vacationDraft.endDate"
+                :disabled="vacationBusy"
+                type="date"
+              />
+            </label>
+
+            <label class="field field--notes">
+              <span class="field-label">Notas:</span>
+              <textarea
+                v-model="vacationDraft.notes"
+                :disabled="vacationBusy"
+                rows="2"
+                placeholder="Opcional: verano, puente, media jornada..."
+              />
+            </label>
+
+            <div class="vacation-form__actions">
+              <button
+                class="ghost-button"
+                type="button"
+                :disabled="vacationBusy"
+                @click="
+                  vacationDraft = createVacationDraftForDate(selectedDate)
+                "
+              >
+                Limpiar
+              </button>
+              <button
+                class="primary-button"
+                type="submit"
+                :disabled="vacationBusy"
+              >
+                {{ vacationBusy ? "Guardando..." : "Guardar vacaciones" }}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <div class="confirm-dialog__actions">
+          <button
+            class="ghost-button"
+            type="button"
+            :disabled="vacationBusy"
+            @click="closeVacationsDialog"
+          >
+            Cerrar
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div
       v-if="canEditReports && importDialogOpen"
       class="confirm-overlay"
       @click.self="closeImportDialog"
@@ -2837,6 +3323,14 @@ onBeforeUnmount(() => {
         aria-modal="true"
         aria-labelledby="import-dialog-title"
       >
+        <button
+          class="confirm-dialog__close"
+          type="button"
+          aria-label="Cerrar"
+          @click="closeImportDialog"
+        >
+          X
+        </button>
         <h2 id="import-dialog-title">Importar informes desde Excel</h2>
         <p class="pedido-editor__copy">
           La plantilla debe incluir las columnas <strong>fecha</strong>,
@@ -2966,6 +3460,14 @@ onBeforeUnmount(() => {
         aria-modal="true"
         aria-labelledby="remove-dialog-title"
       >
+        <button
+          class="confirm-dialog__close"
+          type="button"
+          aria-label="Cerrar"
+          @click="closeRemoveDialog"
+        >
+          X
+        </button>
         <h2 id="remove-dialog-title">¿Quieres eliminar este informe?</h2>
         <dl class="confirm-dialog__details">
           <div>
@@ -2999,6 +3501,14 @@ onBeforeUnmount(() => {
         aria-modal="true"
         aria-labelledby="move-dialog-title"
       >
+        <button
+          class="confirm-dialog__close"
+          type="button"
+          aria-label="Cerrar"
+          @click="closeMoveDialog"
+        >
+          X
+        </button>
         <h2 id="move-dialog-title">Mover informe a otro día</h2>
         <dl class="confirm-dialog__details">
           <div>
@@ -3050,3 +3560,119 @@ onBeforeUnmount(() => {
     </section>
   </main>
 </template>
+
+<style scoped>
+.vacation-dialog {
+  width: min(960px, calc(100vw - 2rem));
+}
+
+.vacation-panel {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 1rem;
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.day-vacation-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.8rem;
+}
+
+.day-vacation-badges--empty {
+  margin: 0 0 1rem;
+}
+
+.day-vacation-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+  background: #ffedd5;
+  color: #9a3412;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.vacation-panel__header h4 {
+  margin: 0;
+}
+
+.vacation-panel__copy {
+  margin: 0.35rem 0 0;
+  color: #475569;
+}
+
+.vacation-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.vacation-card {
+  padding: 0.9rem 1rem;
+  border-radius: 0.9rem;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+}
+
+.vacation-card p {
+  margin: 0.3rem 0 0;
+}
+
+.vacation-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.vacation-card__notes {
+  color: #7c2d12;
+}
+
+.vacation-form {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.vacation-form__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  grid-column: 1 / -1;
+}
+
+.month-card__vacations {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 0.5rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: #ffedd5;
+  color: #9a3412;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.month-card__vacations-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.5rem;
+}
+
+.month-card__vacations-list .month-card__vacations {
+  margin-top: 0;
+}
+
+.field-hint {
+  margin: 0.4rem 0 0;
+  font-size: 0.82rem;
+  color: #b45309;
+}
+</style>
