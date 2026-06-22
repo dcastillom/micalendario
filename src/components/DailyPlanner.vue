@@ -42,9 +42,8 @@ import {
   plannerAuthState,
 } from "../lib/planner-auth";
 import {
+  PLANNER_DATA_UPDATED_EVENT,
   dispatchPlannerSettingsUpdated,
-  PLANNER_OPEN_IMPORT_DIALOG_EVENT,
-  PLANNER_OPEN_VACATIONS_DIALOG_EVENT,
   PLANNER_SETTINGS_UPDATED_EVENT,
 } from "../lib/planner-ui-events";
 import type {
@@ -216,7 +215,6 @@ const vacationMonthFilter = ref("");
 const vacationSort = ref<"start-asc" | "start-desc" | "person-asc">(
   "start-asc",
 );
-const pendingInitialDialog = ref<"" | "import" | "vacations">("");
 const unsavedDayDrafts = ref<Record<string, DayRecord>>({});
 const isEditingTextField = ref(false);
 
@@ -2214,13 +2212,6 @@ async function initializePlannerDataForSession() {
     await Promise.all([loadSelectedDay(), loadSelectedMonth()]);
     plannerDataLoadedForSession.value = true;
     hasInitialized.value = true;
-    if (pendingInitialDialog.value === "import") {
-      openImportDialog();
-      pendingInitialDialog.value = "";
-    } else if (pendingInitialDialog.value === "vacations") {
-      openVacationsDialog();
-      pendingInitialDialog.value = "";
-    }
     startBackupScheduleIfAllowed();
   } catch (error) {
     console.error("No se pudo inicializar la agenda.", error);
@@ -2377,9 +2368,7 @@ function clearInitialNavigationParams() {
 
   const url = new URL(window.location.href);
   const hadNavigationParams =
-    url.searchParams.has("date") ||
-    url.searchParams.has("entry") ||
-    url.searchParams.has("dialog");
+    url.searchParams.has("date") || url.searchParams.has("entry");
 
   if (!hadNavigationParams) {
     return;
@@ -2387,7 +2376,6 @@ function clearInitialNavigationParams() {
 
   url.searchParams.delete("date");
   url.searchParams.delete("entry");
-  url.searchParams.delete("dialog");
 
   const nextSearch = url.searchParams.toString();
   const nextUrl = `${url.pathname}${nextSearch ? `?${nextSearch}` : ""}${url.hash}`;
@@ -2403,7 +2391,6 @@ function applyInitialNavigationState() {
   const params = new URLSearchParams(window.location.search);
   const dateParam = params.get("date")?.trim() ?? "";
   const entryParam = params.get("entry")?.trim() ?? "";
-  const dialogParam = params.get("dialog")?.trim() ?? "";
 
   applyDefaultNavigationState();
 
@@ -2412,8 +2399,6 @@ function applyInitialNavigationState() {
     viewMode.value = "day";
   }
 
-  pendingInitialDialog.value =
-    dialogParam === "import" || dialogParam === "vacations" ? dialogParam : "";
   pendingEntryId = entryParam;
   clearInitialNavigationParams();
   return viewMode.value === "day";
@@ -2623,6 +2608,14 @@ function handleWindowKeydown(event: KeyboardEvent) {
   }
 }
 
+function handlePlannerDataUpdated() {
+  if (!hasInitialized.value) {
+    return;
+  }
+
+  void Promise.all([loadAllRecords(), loadAllVacations(), loadSelectedMonth(), loadSelectedDay()]);
+}
+
 watch(selectedDate, (nextDate, previousDate) => {
   if (!hasInitialized.value) {
     return;
@@ -2702,12 +2695,8 @@ watch(canManageApp, (nextCanManageApp) => {
 onMounted(() => {
   window.addEventListener("keydown", handleWindowKeydown);
   window.addEventListener(
-    PLANNER_OPEN_IMPORT_DIALOG_EVENT,
-    handleOpenImportDialog,
-  );
-  window.addEventListener(
-    PLANNER_OPEN_VACATIONS_DIALOG_EVENT,
-    handleOpenVacationsDialog,
+    PLANNER_DATA_UPDATED_EVENT,
+    handlePlannerDataUpdated,
   );
   window.addEventListener(
     PLANNER_SETTINGS_UPDATED_EVENT,
@@ -2728,12 +2717,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleWindowKeydown);
   window.removeEventListener(
-    PLANNER_OPEN_IMPORT_DIALOG_EVENT,
-    handleOpenImportDialog,
-  );
-  window.removeEventListener(
-    PLANNER_OPEN_VACATIONS_DIALOG_EVENT,
-    handleOpenVacationsDialog,
+    PLANNER_DATA_UPDATED_EVENT,
+    handlePlannerDataUpdated,
   );
   window.removeEventListener(
     PLANNER_SETTINGS_UPDATED_EVENT,

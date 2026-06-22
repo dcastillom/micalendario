@@ -9,6 +9,7 @@ export const PLANNER_AGENDA_REFERENCE_FILTER_EVENT =
 export const PLANNER_OPEN_IMPORT_DIALOG_EVENT = "planner:open-import-dialog";
 export const PLANNER_OPEN_VACATIONS_DIALOG_EVENT =
   "planner:open-vacations-dialog";
+export const PLANNER_DATA_UPDATED_EVENT = "planner:data-updated";
 
 export type PlannerAgendaViewMode = "day" | "month";
 
@@ -89,4 +90,12 @@ export function dispatchPlannerOpenVacationsDialog() {
   }
 
   window.dispatchEvent(new Event(PLANNER_OPEN_VACATIONS_DIALOG_EVENT));
+}
+
+export function dispatchPlannerDataUpdated() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.dispatchEvent(new Event(PLANNER_DATA_UPDATED_EVENT));
 }

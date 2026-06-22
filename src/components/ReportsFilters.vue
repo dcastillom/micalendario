@@ -13,7 +13,10 @@ import {
   ensurePlannerAuthInitialized,
   plannerAuthState,
 } from "../lib/planner-auth";
-import { PLANNER_SETTINGS_UPDATED_EVENT } from "../lib/planner-ui-events";
+import {
+  PLANNER_DATA_UPDATED_EVENT,
+  PLANNER_SETTINGS_UPDATED_EVENT,
+} from "../lib/planner-ui-events";
 import type { DayEntry, PlannerSettings } from "../lib/planner-types";
 
 type PlanoFilter = "" | "si" | "no" | "pendiente";
@@ -775,7 +778,16 @@ function handlePlannerSettingsUpdated(event: Event) {
   asignadoOptions.value = settings.asignadoOptions;
 }
 
+function handlePlannerDataUpdated() {
+  reportsLoadedForSession.value = false;
+  void initializeReportsForSession();
+}
+
 onMounted(() => {
+  window.addEventListener(
+    PLANNER_DATA_UPDATED_EVENT,
+    handlePlannerDataUpdated,
+  );
   window.addEventListener(
     PLANNER_SETTINGS_UPDATED_EVENT,
     handlePlannerSettingsUpdated,
@@ -787,6 +799,10 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener(
+    PLANNER_DATA_UPDATED_EVENT,
+    handlePlannerDataUpdated,
+  );
   window.removeEventListener(
     PLANNER_SETTINGS_UPDATED_EVENT,
     handlePlannerSettingsUpdated,

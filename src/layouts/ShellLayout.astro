@@ -1,6 +1,7 @@
 ---
 import { ClientRouter } from "astro:transitions";
 import PersistentAppHeader from "../components/PersistentAppHeader.vue";
+import PlannerGlobalDialogs from "../components/PlannerGlobalDialogs.vue";
 import "../styles/global.css";
 
 interface Props {
@@ -25,6 +26,7 @@ const { title = "Mi Calendario" } = Astro.props;
       transition:persist="app-shell-header"
       initial-pathname={Astro.url.pathname}
     />
+    <PlannerGlobalDialogs client:load />
     <slot />
   </body>
 </html>
