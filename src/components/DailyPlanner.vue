@@ -216,6 +216,7 @@ const vacationMonthFilter = ref("");
 const vacationSort = ref<"start-asc" | "start-desc" | "person-asc">(
   "start-asc",
 );
+const pendingInitialDialog = ref<"" | "import" | "vacations">("");
 const unsavedDayDrafts = ref<Record<string, DayRecord>>({});
 const isEditingTextField = ref(false);
 
@@ -2213,6 +2214,13 @@ async function initializePlannerDataForSession() {
     await Promise.all([loadSelectedDay(), loadSelectedMonth()]);
     plannerDataLoadedForSession.value = true;
     hasInitialized.value = true;
+    if (pendingInitialDialog.value === "import") {
+      openImportDialog();
+      pendingInitialDialog.value = "";
+    } else if (pendingInitialDialog.value === "vacations") {
+      openVacationsDialog();
+      pendingInitialDialog.value = "";
+    }
     startBackupScheduleIfAllowed();
   } catch (error) {
     console.error("No se pudo inicializar la agenda.", error);
@@ -2369,7 +2377,9 @@ function clearInitialNavigationParams() {
 
   const url = new URL(window.location.href);
   const hadNavigationParams =
-    url.searchParams.has("date") || url.searchParams.has("entry");
+    url.searchParams.has("date") ||
+    url.searchParams.has("entry") ||
+    url.searchParams.has("dialog");
 
   if (!hadNavigationParams) {
     return;
@@ -2377,6 +2387,7 @@ function clearInitialNavigationParams() {
 
   url.searchParams.delete("date");
   url.searchParams.delete("entry");
+  url.searchParams.delete("dialog");
 
   const nextSearch = url.searchParams.toString();
   const nextUrl = `${url.pathname}${nextSearch ? `?${nextSearch}` : ""}${url.hash}`;
@@ -2392,6 +2403,7 @@ function applyInitialNavigationState() {
   const params = new URLSearchParams(window.location.search);
   const dateParam = params.get("date")?.trim() ?? "";
   const entryParam = params.get("entry")?.trim() ?? "";
+  const dialogParam = params.get("dialog")?.trim() ?? "";
 
   applyDefaultNavigationState();
 
@@ -2400,6 +2412,8 @@ function applyInitialNavigationState() {
     viewMode.value = "day";
   }
 
+  pendingInitialDialog.value =
+    dialogParam === "import" || dialogParam === "vacations" ? dialogParam : "";
   pendingEntryId = entryParam;
   clearInitialNavigationParams();
   return viewMode.value === "day";

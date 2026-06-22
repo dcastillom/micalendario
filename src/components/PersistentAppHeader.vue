@@ -103,14 +103,14 @@ const canRenderHeaderActions = computed(
 );
 const canImportReports = computed(
   () =>
-    isAgendaRoute.value &&
+    (isAgendaRoute.value || isReportsRoute.value) &&
     isAuthenticated.value &&
     (headerUserProfile.value?.role === "admin" ||
       headerUserProfile.value?.role === "editor"),
 );
 const canManageVacations = computed(
   () =>
-    isAgendaRoute.value &&
+    (isAgendaRoute.value || isReportsRoute.value) &&
     isAuthenticated.value &&
     (headerUserProfile.value?.role === "admin" ||
       headerUserProfile.value?.role === "editor"),
@@ -531,6 +531,12 @@ function handleImportReportsClick() {
   }
 
   closeHeaderMenu();
+
+  if (isReportsRoute.value) {
+    window.location.assign("/?dialog=import");
+    return;
+  }
+
   dispatchPlannerOpenImportDialog();
 }
 
@@ -540,6 +546,12 @@ function handleVacationsClick() {
   }
 
   closeHeaderMenu();
+
+  if (isReportsRoute.value) {
+    window.location.assign("/?dialog=vacations");
+    return;
+  }
+
   dispatchPlannerOpenVacationsDialog();
 }
 

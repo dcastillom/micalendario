@@ -2520,6 +2520,16 @@ button {
   .company-header__menu-toggle {
     display: inline-grid;
   }
+
+  .app-shell-header--reports .company-header__button-group {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .app-shell-header--reports .company-header__menu-shell {
+    display: none;
+  }
 }
 
 @media (max-width: 1080px) {
