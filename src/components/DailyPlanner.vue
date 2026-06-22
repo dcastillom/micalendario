@@ -109,6 +109,14 @@ function formatTimestamp(value: string) {
   }).format(new Date(value));
 }
 
+function formatShortDate(value: string) {
+  return new Intl.DateTimeFormat("es-ES", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(`${value}T12:00:00`));
+}
+
 function isValidDateKey(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
@@ -202,6 +210,12 @@ const vacationDraft = ref<PlannerVacation>(
 );
 const vacationBusy = ref(false);
 const vacationError = ref("");
+const vacationPersonFilter = ref("");
+const vacationStatusFilter = ref<"all" | "active" | "future" | "past">("all");
+const vacationMonthFilter = ref("");
+const vacationSort = ref<"start-asc" | "start-desc" | "person-asc">(
+  "start-asc",
+);
 const unsavedDayDrafts = ref<Record<string, DayRecord>>({});
 const isEditingTextField = ref(false);
 
@@ -283,6 +297,93 @@ const selectedDateVacationBadges = computed(() =>
     label: `Ausencia ${vacation.person.trim()}`.trim(),
   })),
 );
+const vacationPersonFilterOptions = computed(() => {
+  const options = new Set<string>();
+
+  asignadoOptions.value.forEach((option) => {
+    const trimmed = option.trim();
+
+    if (trimmed) {
+      options.add(trimmed);
+    }
+  });
+
+  vacations.value.forEach((vacation) => {
+    const trimmed = vacation.person.trim();
+
+    if (trimmed) {
+      options.add(trimmed);
+    }
+  });
+
+  return [...options].sort((left, right) =>
+    left.localeCompare(right, "es", { sensitivity: "base" }),
+  );
+});
+const isEditingVacation = computed(() =>
+  vacations.value.some((vacation) => vacation.id === vacationDraft.value.id),
+);
+const filteredVacations = computed(() => {
+  const normalizedPersonFilter = vacationPersonFilter.value
+    .trim()
+    .toLocaleLowerCase("es-ES");
+  const today = todayKey();
+
+  const filtered = vacations.value.filter((vacation) => {
+    if (
+      normalizedPersonFilter &&
+      !vacation.person
+        .toLocaleLowerCase("es-ES")
+        .includes(normalizedPersonFilter)
+    ) {
+      return false;
+    }
+
+    if (
+      vacationMonthFilter.value &&
+      !(
+        vacation.startDate.slice(0, 7) <= vacationMonthFilter.value &&
+        vacation.endDate.slice(0, 7) >= vacationMonthFilter.value
+      )
+    ) {
+      return false;
+    }
+
+    if (vacationStatusFilter.value === "active") {
+      return vacationIncludesDate(vacation, today);
+    }
+
+    if (vacationStatusFilter.value === "future") {
+      return vacation.startDate > today;
+    }
+
+    if (vacationStatusFilter.value === "past") {
+      return vacation.endDate < today;
+    }
+
+    return true;
+  });
+
+  return [...filtered].sort((left, right) => {
+    if (vacationSort.value === "start-desc") {
+      return right.startDate.localeCompare(left.startDate);
+    }
+
+    if (vacationSort.value === "person-asc") {
+      const personComparison = left.person.localeCompare(right.person, "es", {
+        sensitivity: "base",
+      });
+
+      if (personComparison !== 0) {
+        return personComparison;
+      }
+
+      return left.startDate.localeCompare(right.startDate);
+    }
+
+    return left.startDate.localeCompare(right.startDate);
+  });
+});
 const monthCalendarCells = computed(() => {
   const [year, month] = monthKey.value.split("-").map(Number);
   const firstDay = new Date(year, month - 1, 1, 12, 0, 0);
@@ -606,6 +707,15 @@ function createVacationDraftForDate(dateKey: string) {
     startDate: dateKey,
     endDate: dateKey,
   };
+}
+
+function resetVacationDraft() {
+  vacationDraft.value = createVacationDraftForDate(selectedDate.value);
+}
+
+function startVacationEdit(vacation: PlannerVacation) {
+  vacationDraft.value = { ...vacation };
+  vacationError.value = "";
 }
 
 function getEntryReferenceError(entryId: string) {
@@ -1106,7 +1216,11 @@ function openVacationsDialog() {
     return;
   }
 
-  vacationDraft.value = createVacationDraftForDate(selectedDate.value);
+  resetVacationDraft();
+  vacationPersonFilter.value = "";
+  vacationStatusFilter.value = "all";
+  vacationMonthFilter.value = "";
+  vacationSort.value = "start-desc";
   vacationError.value = "";
   vacationDialogOpen.value = true;
 }
@@ -1121,6 +1235,7 @@ function closeVacationsDialog() {
   }
 
   vacationDialogOpen.value = false;
+  resetVacationDraft();
   vacationError.value = "";
 }
 
@@ -1806,8 +1921,10 @@ async function submitVacation() {
       endDate,
     });
     await loadAllVacations();
-    vacationDraft.value = createVacationDraftForDate(selectedDate.value);
-    vacationDialogOpen.value = false;
+    vacationMonthFilter.value = "";
+    vacationStatusFilter.value = "all";
+    vacationSort.value = "start-desc";
+    resetVacationDraft();
     queueDesktopBackup("vacation-save");
   } catch (error) {
     console.error("No se pudieron guardar las vacaciones.", error);
@@ -3189,114 +3306,184 @@ onBeforeUnmount(() => {
           está disponible para usuarios con permiso de edición.
         </p>
 
-        <div class="vacation-panel">
-          <div class="vacation-panel__header">
-            <div>
-              <h4>Vacaciones del día seleccionado</h4>
-              <p v-if="hasSelectedDateVacations" class="vacation-panel__copy">
-                {{ selectedDateVacations.length }}
-                {{
-                  selectedDateVacations.length === 1
-                    ? "persona no está disponible."
-                    : "personas no están disponibles."
-                }}
-              </p>
-              <p v-else class="vacation-panel__copy">
-                No hay vacaciones registradas para este día.
-              </p>
+        <div class="vacation-manager">
+          <section class="vacation-panel">
+            <div class="vacation-panel__header">
+              <div>
+                <h4>
+                  {{
+                    isEditingVacation
+                      ? "Editar ausencia"
+                      : "Registrar nueva ausencia"
+                  }}
+                </h4>
+                <p class="vacation-panel__copy">
+                  {{
+                    isEditingVacation
+                      ? "Actualiza el periodo seleccionado."
+                      : "Añade un nuevo periodo de ausencia."
+                  }}
+                </p>
+              </div>
             </div>
-          </div>
 
-          <div v-if="selectedDateVacations.length" class="vacation-list">
-            <article
-              v-for="vacation in selectedDateVacations"
-              :key="vacation.id"
-              class="vacation-card"
-            >
-              <div class="vacation-card__top">
-                <strong>{{ vacation.person }}</strong>
+            <form class="vacation-form" @submit.prevent="submitVacation">
+              <label class="field">
+                <span class="field-label">Persona:</span>
+                <select v-model="vacationDraft.person" :disabled="vacationBusy">
+                  <option value="">Selecciona una persona</option>
+                  <option
+                    v-for="personOption in asignadoOptions"
+                    :key="personOption"
+                    :value="personOption"
+                  >
+                    {{ personOption }}
+                  </option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span class="field-label">Desde:</span>
+                <input
+                  v-model="vacationDraft.startDate"
+                  :disabled="vacationBusy"
+                  type="date"
+                />
+              </label>
+
+              <label class="field">
+                <span class="field-label">Hasta:</span>
+                <input
+                  v-model="vacationDraft.endDate"
+                  :disabled="vacationBusy"
+                  type="date"
+                />
+              </label>
+
+              <label class="field field--notes vacation-form__notes">
+                <span class="field-label">Notas:</span>
+                <textarea
+                  v-model="vacationDraft.notes"
+                  :disabled="vacationBusy"
+                  rows="2"
+                  placeholder="Opcional: verano, puente, media jornada..."
+                />
+              </label>
+
+              <div class="vacation-form__actions">
                 <button
-                  class="inline-remove"
+                  class="ghost-button"
                   type="button"
                   :disabled="vacationBusy"
-                  @click="removeVacationRecord(vacation.id)"
+                  @click="resetVacationDraft"
                 >
-                  Eliminar
+                  {{ isEditingVacation ? "Cancelar edición" : "Limpiar" }}
+                </button>
+                <button
+                  class="primary-button"
+                  type="submit"
+                  :disabled="vacationBusy"
+                >
+                  {{
+                    vacationBusy
+                      ? "Guardando..."
+                      : isEditingVacation
+                        ? "Guardar cambios"
+                        : "Guardar ausencia"
+                  }}
                 </button>
               </div>
-              <p>
-                Del {{ formatHeader(vacation.startDate) }} al
-                {{ formatHeader(vacation.endDate) }}
-              </p>
-              <p v-if="vacation.notes" class="vacation-card__notes">
-                {{ vacation.notes }}
-              </p>
-            </article>
-          </div>
+            </form>
+          </section>
 
-          <form class="vacation-form" @submit.prevent="submitVacation">
-            <label class="field">
-              <span class="field-label">Persona:</span>
-              <select v-model="vacationDraft.person" :disabled="vacationBusy">
-                <option value="">Selecciona una persona</option>
-                <option
-                  v-for="personOption in asignadoOptions"
-                  :key="personOption"
-                  :value="personOption"
-                >
-                  {{ personOption }}
-                </option>
-              </select>
-            </label>
-
-            <label class="field">
-              <span class="field-label">Desde:</span>
-              <input
-                v-model="vacationDraft.startDate"
-                :disabled="vacationBusy"
-                type="date"
-              />
-            </label>
-
-            <label class="field">
-              <span class="field-label">Hasta:</span>
-              <input
-                v-model="vacationDraft.endDate"
-                :disabled="vacationBusy"
-                type="date"
-              />
-            </label>
-
-            <label class="field field--notes">
-              <span class="field-label">Notas:</span>
-              <textarea
-                v-model="vacationDraft.notes"
-                :disabled="vacationBusy"
-                rows="2"
-                placeholder="Opcional: verano, puente, media jornada..."
-              />
-            </label>
-
-            <div class="vacation-form__actions">
-              <button
-                class="ghost-button"
-                type="button"
-                :disabled="vacationBusy"
-                @click="
-                  vacationDraft = createVacationDraftForDate(selectedDate)
-                "
-              >
-                Limpiar
-              </button>
-              <button
-                class="primary-button"
-                type="submit"
-                :disabled="vacationBusy"
-              >
-                {{ vacationBusy ? "Guardando..." : "Guardar vacaciones" }}
-              </button>
+          <section class="vacation-panel vacation-panel--filters">
+            <div class="vacation-panel__header">
+              <div>
+                <h4>Listado global</h4>
+                <p class="vacation-panel__copy">
+                  Consulta, filtra y edita todas las ausencias registradas.
+                </p>
+              </div>
             </div>
-          </form>
+
+            <div class="vacation-filters">
+              <label class="field">
+                <span class="field-label">Persona:</span>
+                <select v-model="vacationPersonFilter">
+                  <option value="">Todas las personas</option>
+                  <option
+                    v-for="personOption in vacationPersonFilterOptions"
+                    :key="personOption"
+                    :value="personOption"
+                  >
+                    {{ personOption }}
+                  </option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span class="field-label">Mes:</span>
+                <input v-model="vacationMonthFilter" type="month" />
+              </label>
+
+              <label class="field">
+                <span class="field-label">Estado:</span>
+                <select v-model="vacationStatusFilter">
+                  <option value="all">Todas</option>
+                  <option value="active">Activas hoy</option>
+                  <option value="future">Futuras</option>
+                  <option value="past">Pasadas</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span class="field-label">Ordenar por:</span>
+                <select v-model="vacationSort">
+                  <option value="start-asc">Inicio ascendente</option>
+                  <option value="start-desc">Inicio descendente</option>
+                  <option value="person-asc">Persona A-Z</option>
+                </select>
+              </label>
+            </div>
+
+            <div v-if="filteredVacations.length" class="vacation-table">
+              <article
+                v-for="vacation in filteredVacations"
+                :key="vacation.id"
+                class="vacation-table__row"
+              >
+                <div class="vacation-table__main">
+                  <strong>{{ vacation.person }}</strong>
+                  <span>
+                    {{ formatShortDate(vacation.startDate) }} -
+                    {{ formatShortDate(vacation.endDate) }}
+                  </span>
+                  <span v-if="vacation.notes">{{ vacation.notes }}</span>
+                </div>
+                <div class="vacation-table__actions">
+                  <button
+                    class="ghost-button"
+                    type="button"
+                    :disabled="vacationBusy"
+                    @click="startVacationEdit(vacation)"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    class="inline-remove"
+                    type="button"
+                    :disabled="vacationBusy"
+                    @click="removeVacationRecord(vacation.id)"
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              </article>
+            </div>
+            <p v-else class="vacation-panel__copy">
+              No hay ausencias que coincidan con los filtros.
+            </p>
+          </section>
         </div>
 
         <div class="confirm-dialog__actions">
@@ -3566,6 +3753,11 @@ onBeforeUnmount(() => {
   width: min(960px, calc(100vw - 2rem));
 }
 
+.vacation-manager {
+  display: grid;
+  gap: 1rem;
+}
+
 .vacation-panel {
   display: grid;
   gap: 1rem;
@@ -3640,11 +3832,52 @@ onBeforeUnmount(() => {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
+.vacation-form__notes {
+  grid-column: 1 / -1;
+}
+
 .vacation-form__actions {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   grid-column: 1 / -1;
+}
+
+.vacation-filters {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.vacation-table {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.vacation-table__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.vacation-table__main {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.vacation-table__main span {
+  color: #475569;
+}
+
+.vacation-table__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
 }
 
 .month-card__vacations {
