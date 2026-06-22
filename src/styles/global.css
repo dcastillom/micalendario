@@ -1404,13 +1404,33 @@ button {
   box-shadow: 0 28px 80px rgba(59, 40, 18, 0.24);
 }
 
+.confirm-dialog__header {
+  position: sticky;
+  top: -24px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: -24px -24px 0;
+  padding: 24px 24px 12px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 252, 246, 0.98),
+    rgba(244, 234, 220, 0.96)
+  );
+}
+
+.confirm-dialog__header h2,
+.confirm-dialog__header h3 {
+  margin: 0;
+}
+
 .confirm-dialog__close {
-  position: absolute;
-  top: 18px;
-  right: 18px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto;
   width: 42px;
   height: 42px;
   padding: 0;

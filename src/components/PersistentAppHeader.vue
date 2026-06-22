@@ -1351,14 +1351,17 @@ onBeforeUnmount(() => {
           aria-modal="true"
           aria-labelledby="login-dialog-title"
         >
-          <button
-            class="confirm-dialog__close"
-            type="button"
-            aria-label="Cerrar"
-            @click="closeLoginDialog"
-          >
-            X
-          </button>
+          <div class="confirm-dialog__header">
+            <h2 id="login-dialog-title">Acceso</h2>
+            <button
+              class="confirm-dialog__close"
+              type="button"
+              aria-label="Cerrar"
+              @click="closeLoginDialog"
+            >
+              X
+            </button>
+          </div>
           <AuthAccessCard
             embedded
             title="Acceso"
@@ -1379,15 +1382,17 @@ onBeforeUnmount(() => {
           aria-modal="true"
           aria-labelledby="users-editor-title"
         >
-          <button
-            class="confirm-dialog__close"
-            type="button"
-            aria-label="Cerrar"
-            @click="closeAdminEditors"
-          >
-            X
-          </button>
-          <h2 id="users-editor-title">Gestionar usuarios</h2>
+          <div class="confirm-dialog__header">
+            <h2 id="users-editor-title">Gestionar usuarios</h2>
+            <button
+              class="confirm-dialog__close"
+              type="button"
+              aria-label="Cerrar"
+              @click="closeAdminEditors"
+            >
+              X
+            </button>
+          </div>
           <section class="users-editor">
             <div class="users-editor__header">
               <p class="sidebar-copy">
@@ -1547,17 +1552,19 @@ onBeforeUnmount(() => {
               aria-modal="true"
               aria-labelledby="remove-user-dialog-title"
             >
-              <button
-                class="confirm-dialog__close"
-                type="button"
-                aria-label="Cerrar"
-                @click="closeRemoveManagedUserDialog"
-              >
-                X
-              </button>
-              <h2 id="remove-user-dialog-title">
-                ¿Quieres eliminar este usuario definitivamente?
-              </h2>
+              <div class="confirm-dialog__header">
+                <h2 id="remove-user-dialog-title">
+                  ¿Quieres eliminar este usuario definitivamente?
+                </h2>
+                <button
+                  class="confirm-dialog__close"
+                  type="button"
+                  aria-label="Cerrar"
+                  @click="closeRemoveManagedUserDialog"
+                >
+                  X
+                </button>
+              </div>
               <dl class="confirm-dialog__details">
                 <div>
                   <dt>Email:</dt>
@@ -1614,15 +1621,17 @@ onBeforeUnmount(() => {
           aria-modal="true"
           aria-labelledby="brand-editor-title"
         >
-          <button
-            class="confirm-dialog__close"
-            type="button"
-            aria-label="Cerrar"
-            @click="closeAdminEditors"
-          >
-            X
-          </button>
-          <h2 id="brand-editor-title">Editar cabecera</h2>
+          <div class="confirm-dialog__header">
+            <h2 id="brand-editor-title">Editar cabecera</h2>
+            <button
+              class="confirm-dialog__close"
+              type="button"
+              aria-label="Cerrar"
+              @click="closeAdminEditors"
+            >
+              X
+            </button>
+          </div>
           <section class="brand-editor">
             <div class="brand-editor__header">
               <p class="sidebar-copy">
@@ -1713,15 +1722,17 @@ onBeforeUnmount(() => {
           aria-modal="true"
           aria-labelledby="asignado-editor-title"
         >
-          <button
-            class="confirm-dialog__close"
-            type="button"
-            aria-label="Cerrar"
-            @click="closeAdminEditors"
-          >
-            X
-          </button>
-          <h2 id="asignado-editor-title">Editar asignados</h2>
+          <div class="confirm-dialog__header">
+            <h2 id="asignado-editor-title">Editar asignados</h2>
+            <button
+              class="confirm-dialog__close"
+              type="button"
+              aria-label="Cerrar"
+              @click="closeAdminEditors"
+            >
+              X
+            </button>
+          </div>
           <section class="pedido-editor">
             <div class="pedido-editor__header">
               <p class="pedido-editor__copy">

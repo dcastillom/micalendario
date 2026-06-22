@@ -3292,15 +3292,17 @@ onBeforeUnmount(() => {
         aria-modal="true"
         aria-labelledby="vacation-dialog-title"
       >
-        <button
-          class="confirm-dialog__close"
-          type="button"
-          aria-label="Cerrar"
-          @click="closeVacationsDialog"
-        >
-          X
-        </button>
-        <h2 id="vacation-dialog-title">Gestionar ausencias</h2>
+        <div class="confirm-dialog__header">
+          <h2 id="vacation-dialog-title">Gestionar ausencias</h2>
+          <button
+            class="confirm-dialog__close"
+            type="button"
+            aria-label="Cerrar"
+            @click="closeVacationsDialog"
+          >
+            X
+          </button>
+        </div>
         <p class="pedido-editor__copy">
           Registra vacaciones o ausencias por persona y rango de fechas. Sólo
           está disponible para usuarios con permiso de edición.
@@ -3510,15 +3512,17 @@ onBeforeUnmount(() => {
         aria-modal="true"
         aria-labelledby="import-dialog-title"
       >
-        <button
-          class="confirm-dialog__close"
-          type="button"
-          aria-label="Cerrar"
-          @click="closeImportDialog"
-        >
-          X
-        </button>
-        <h2 id="import-dialog-title">Importar informes desde Excel</h2>
+        <div class="confirm-dialog__header">
+          <h2 id="import-dialog-title">Importar informes desde Excel</h2>
+          <button
+            class="confirm-dialog__close"
+            type="button"
+            aria-label="Cerrar"
+            @click="closeImportDialog"
+          >
+            X
+          </button>
+        </div>
         <p class="pedido-editor__copy">
           La plantilla debe incluir las columnas <strong>fecha</strong>,
           <strong>referencia</strong>, <strong>localidad</strong> y
@@ -3647,15 +3651,17 @@ onBeforeUnmount(() => {
         aria-modal="true"
         aria-labelledby="remove-dialog-title"
       >
-        <button
-          class="confirm-dialog__close"
-          type="button"
-          aria-label="Cerrar"
-          @click="closeRemoveDialog"
-        >
-          X
-        </button>
-        <h2 id="remove-dialog-title">¿Quieres eliminar este informe?</h2>
+        <div class="confirm-dialog__header">
+          <h2 id="remove-dialog-title">¿Quieres eliminar este informe?</h2>
+          <button
+            class="confirm-dialog__close"
+            type="button"
+            aria-label="Cerrar"
+            @click="closeRemoveDialog"
+          >
+            X
+          </button>
+        </div>
         <dl class="confirm-dialog__details">
           <div>
             <dt>Referencia:</dt>
@@ -3688,15 +3694,17 @@ onBeforeUnmount(() => {
         aria-modal="true"
         aria-labelledby="move-dialog-title"
       >
-        <button
-          class="confirm-dialog__close"
-          type="button"
-          aria-label="Cerrar"
-          @click="closeMoveDialog"
-        >
-          X
-        </button>
-        <h2 id="move-dialog-title">Mover informe a otro día</h2>
+        <div class="confirm-dialog__header">
+          <h2 id="move-dialog-title">Mover informe a otro día</h2>
+          <button
+            class="confirm-dialog__close"
+            type="button"
+            aria-label="Cerrar"
+            @click="closeMoveDialog"
+          >
+            X
+          </button>
+        </div>
         <dl class="confirm-dialog__details">
           <div>
             <dt>Referencia:</dt>
