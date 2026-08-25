@@ -6,6 +6,32 @@ const { PlannerStore } = require("./planner-store.cjs");
 
 let plannerStore;
 let staticServer;
+const GITHUB_LATEST_RELEASE_API_URL = "https://api.github.com/repos/dcastillom/micalendario/releases/latest";
+const CURRENT_WINDOWS_INSTALLER_URL = "https://github.com/dcastillom/micalendario/releases/download/v0.1.13/Mi.Calendario.Setup.0.1.13.exe";
+
+async function getLatestWindowsInstallerUrl() {
+  const response = await fetch(GITHUB_LATEST_RELEASE_API_URL, {
+    headers: {
+      Accept: "application/vnd.github+json",
+      "User-Agent": "Mi-Calendario"
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error("No se pudo consultar la última versión disponible.");
+  }
+
+  const release = await response.json();
+  const installer = Array.isArray(release.assets)
+    ? release.assets.find((asset) => /setup.*\.exe$/i.test(String(asset.name ?? "")))
+    : null;
+
+  if (!installer?.browser_download_url) {
+    throw new Error("La última versión no incluye un instalador de Windows.");
+  }
+
+  return installer.browser_download_url;
+}
 
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -115,6 +141,14 @@ async function createWindow() {
     }
   });
 
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith("https://")) {
+      void shell.openExternal(url);
+    }
+
+    return { action: "deny" };
+  });
+
   if (process.platform !== "darwin") {
     window.setMenuBarVisibility(false);
     window.autoHideMenuBar = true;
@@ -183,6 +217,18 @@ app.whenReady().then(async () => {
     }
 
     return backupDir;
+  });
+  ipcMain.handle("planner:open-latest-release", async () => {
+    let installerUrl = CURRENT_WINDOWS_INSTALLER_URL;
+
+    try {
+      installerUrl = await getLatestWindowsInstallerUrl();
+    } catch (error) {
+      console.warn("No se pudo localizar la última release; se usará el instalador disponible.", error);
+    }
+
+    await shell.openExternal(installerUrl);
+    return { success: true };
   });
   ipcMain.handle("planner:select-backup", async () => {
     const backupDir = plannerStore.getBackupDir();

@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld("desktopPlanner", {
   saveBackup: (snapshot) => ipcRenderer.invoke("planner:save-backup", snapshot),
   printCurrentWindow: () => ipcRenderer.invoke("planner:print-current-window"),
   openBackupFolder: () => ipcRenderer.invoke("planner:open-backup-folder"),
+  openLatestRelease: () => ipcRenderer.invoke("planner:open-latest-release"),
   selectBackup: () => ipcRenderer.invoke("planner:select-backup"),
   replaceData: (snapshot) => ipcRenderer.invoke("planner:replace-data", snapshot)
 });

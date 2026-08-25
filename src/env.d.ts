@@ -30,6 +30,7 @@ declare global {
       saveBackup: (snapshot: PlannerBackupSnapshot) => Promise<{ filePath: string; createdAt: string }>;
       printCurrentWindow: () => Promise<{ success: true }>;
       openBackupFolder: () => Promise<string>;
+      openLatestRelease: () => Promise<{ success: true }>;
       selectBackup: () => Promise<PlannerBackupSnapshot | null>;
       replaceData: (snapshot: PlannerBackupSnapshot) => Promise<{ dayCount: number }>;
     };

@@ -58,6 +58,8 @@ const AUTO_BACKUP_DEBOUNCE_MS = 20 * 1000;
 const NEW_ENTRY_SCROLL_TOP_OFFSET = 140;
 const MONTH_CARD_PREVIEW_LIMIT = 6;
 const IMPORT_TEMPLATE_FILE_NAME = "plantilla-informes.xlsx";
+const GITHUB_LATEST_RELEASE_API_URL = "https://api.github.com/repos/dcastillom/micalendario/releases/latest";
+const CURRENT_WINDOWS_INSTALLER_URL = "https://github.com/dcastillom/micalendario/releases/download/v0.1.13/Mi.Calendario.Setup.0.1.13.exe";
 const ABSENCE_TYPES = [
   "Vacaciones",
   "Enfermedad",
@@ -1196,8 +1198,20 @@ function downloadImportTemplate() {
   const worksheet = getXlsxModule().utils.aoa_to_sheet([
     ["fecha", "fecha de campo", "referencia", "localidad", "observaciones"],
     ["2026-04-15", "2026-04-20", "INF-001", "Madrid", "Visita inicial"],
-    ["2026-04-20", "2026-04-27", "INF-002", "Toledo", "Pendiente de revisar acceso"],
-    ["2026-05-03", "2026-05-09", "INF-003", "Segovia", "Comprobar documentacion"],
+    [
+      "2026-04-20",
+      "2026-04-27",
+      "INF-002",
+      "Toledo",
+      "Pendiente de revisar acceso",
+    ],
+    [
+      "2026-05-03",
+      "2026-05-09",
+      "INF-003",
+      "Segovia",
+      "Comprobar documentacion",
+    ],
   ]);
 
   getXlsxModule().utils.book_append_sheet(workbook, worksheet, "Informes");
@@ -2092,6 +2106,34 @@ async function openBackupFolder() {
   }
 }
 
+async function openLatestRelease() {
+  if (typeof window === "undefined") return;
+
+  try {
+    if (window.desktopPlanner?.openLatestRelease) {
+      await window.desktopPlanner.openLatestRelease();
+      return;
+    }
+
+    const response = await fetch(GITHUB_LATEST_RELEASE_API_URL, {
+      headers: { Accept: "application/vnd.github+json" },
+    });
+    const release = await response.json();
+    const installer = Array.isArray(release.assets)
+      ? release.assets.find((asset: { name?: string }) => /setup.*\.exe$/i.test(asset.name ?? ""))
+      : null;
+
+    if (!response.ok || !installer?.browser_download_url) {
+      throw new Error("No se encontró el instalador de Windows.");
+    }
+
+    window.open(installer.browser_download_url, "_blank", "noopener,noreferrer");
+  } catch (error) {
+    console.warn("No se pudo localizar la última release; se usará el instalador disponible.", error);
+    window.open(CURRENT_WINDOWS_INSTALLER_URL, "_blank", "noopener,noreferrer");
+  }
+}
+
 async function restoreBackup() {
   if (!canManageApp.value || !canRestoreBackup.value) {
     return;
@@ -2654,7 +2696,12 @@ function handlePlannerDataUpdated() {
     return;
   }
 
-  void Promise.all([loadAllRecords(), loadAllVacations(), loadSelectedMonth(), loadSelectedDay()]);
+  void Promise.all([
+    loadAllRecords(),
+    loadAllVacations(),
+    loadSelectedMonth(),
+    loadSelectedDay(),
+  ]);
 }
 
 watch(selectedDate, (nextDate, previousDate) => {
@@ -2735,10 +2782,7 @@ watch(canManageApp, (nextCanManageApp) => {
 
 onMounted(() => {
   window.addEventListener("keydown", handleWindowKeydown);
-  window.addEventListener(
-    PLANNER_DATA_UPDATED_EVENT,
-    handlePlannerDataUpdated,
-  );
+  window.addEventListener(PLANNER_DATA_UPDATED_EVENT, handlePlannerDataUpdated);
   window.addEventListener(
     PLANNER_SETTINGS_UPDATED_EVENT,
     handlePlannerSettingsUpdated,
@@ -3198,7 +3242,7 @@ onBeforeUnmount(() => {
               <label class="field field--asignado">
                 <span class="field-label">Asignado:</span>
                 <select v-model="entry.asignado" :disabled="!canEditReports">
-                  <option value="">Selecciona un asignado</option>
+                  <option value="">Selecciona una persona</option>
                   <option
                     v-for="asignadoOption in getAsignadoSelectOptions(
                       entry.asignado,
@@ -3221,7 +3265,7 @@ onBeforeUnmount(() => {
               <label class="field field--laborante">
                 <span class="field-label">Laborante:</span>
                 <select v-model="entry.laborante" :disabled="!canEditReports">
-                  <option value="">Selecciona un laborante</option>
+                  <option value="">Selecciona una persona</option>
                   <option
                     v-for="laboranteOption in getAsignadoSelectOptions(
                       entry.laborante,
@@ -3300,6 +3344,9 @@ onBeforeUnmount(() => {
         <small class="storage-caption">
           {{ storageCaption }}
         </small>
+        <button class="footer-link" type="button" @click="openLatestRelease">
+          Descarga la última versión para Windows
+        </button>
         <button
           v-if="canManageApp"
           class="footer-link"
@@ -3516,7 +3563,9 @@ onBeforeUnmount(() => {
               >
                 <div class="vacation-table__main">
                   <strong>{{ vacation.person }}</strong>
-                  <span>{{ vacation.absenceType || "Tipo sin especificar" }}</span>
+                  <span>{{
+                    vacation.absenceType || "Tipo sin especificar"
+                  }}</span>
                   <span>
                     {{ formatShortDate(vacation.startDate) }} -
                     {{ formatShortDate(vacation.endDate) }}
@@ -3587,8 +3636,8 @@ onBeforeUnmount(() => {
         <p class="pedido-editor__copy">
           La plantilla debe incluir las columnas <strong>fecha</strong>,
           <strong>fecha de campo</strong>, <strong>referencia</strong>,
-          <strong>localidad</strong> y <strong>observaciones</strong>. La
-          fecha de registro se calculara sumando un mes.
+          <strong>localidad</strong> y <strong>observaciones</strong>. La fecha
+          de registro se calculara sumando un mes.
         </p>
 
         <label class="field">

@@ -132,7 +132,7 @@ const brandButtonLabel = computed(() =>
   brandEditorOpen.value ? "Cerrar cabecera" : "Editar cabecera",
 );
 const asignadoButtonLabel = computed(() =>
-  asignadoEditorOpen.value ? "Cerrar asignados" : "Editar asignados",
+  asignadoEditorOpen.value ? "Cerrar asignados" : "Editar personas",
 );
 const usersButtonLabel = computed(() =>
   usersEditorOpen.value ? "Cerrar usuarios" : "Gestionar usuarios",
@@ -1723,7 +1723,7 @@ onBeforeUnmount(() => {
           aria-labelledby="asignado-editor-title"
         >
           <div class="confirm-dialog__header">
-            <h2 id="asignado-editor-title">Editar asignados</h2>
+            <h2 id="asignado-editor-title">Editar personas</h2>
             <button
               class="confirm-dialog__close"
               type="button"
@@ -1791,8 +1791,8 @@ onBeforeUnmount(() => {
               >
                 {{
                   savingAsignadoSettings
-                    ? "Guardando asignados..."
-                    : "Guardar asignados"
+                    ? "Guardando personas..."
+                    : "Guardar personas"
                 }}
               </button>
             </div>

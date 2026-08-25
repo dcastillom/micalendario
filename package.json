@@ -55,6 +55,7 @@
       ]
     },
     "win": {
+      "artifactName": "Mi-Calendario-Setup.exe",
       "target": [
         "nsis"
       ]

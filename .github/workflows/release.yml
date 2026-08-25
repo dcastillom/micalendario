@@ -54,7 +54,7 @@ jobs:
           name: release-${{ matrix.platform_name }}
           path: |
             release/**/*.dmg
-            release/**/*.exe
+            release/*Setup.exe
           if-no-files-found: error
 
   publish:
@@ -74,5 +74,5 @@ jobs:
         with:
           files: |
             release-assets/**/*.dmg
-            release-assets/**/*.exe
+            release-assets/**/*Setup.exe
           generate_release_notes: true
