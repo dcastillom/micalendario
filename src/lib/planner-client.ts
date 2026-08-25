@@ -21,6 +21,7 @@ const REMOTE_DAYS_TABLE = "planner_days";
 const REMOTE_SETTINGS_TABLE = "planner_settings";
 const REMOTE_VACATIONS_TABLE = "planner_vacations";
 const REMOTE_SHARED_SETTINGS_ID = "shared";
+const ABSENCE_TYPE_NOTE_PREFIX = "[mi-calendario:absence-type=";
 
 export interface PlannerBackupSnapshot {
   createdAt: string;
@@ -102,6 +103,7 @@ export function createEmptyVacation(): PlannerVacation {
   return {
     id: createId(),
     person: "",
+    absenceType: "",
     startDate: "",
     endDate: "",
     notes: "",
@@ -142,6 +144,7 @@ function normalizeVacation(vacation: Partial<PlannerVacation>): PlannerVacation 
   return {
     id: String(vacation.id ?? createId()),
     person: String(vacation.person ?? "").trim(),
+    absenceType: String(vacation.absenceType ?? "").trim(),
     startDate,
     endDate: normalizedEndDate,
     notes: String(vacation.notes ?? "").trim(),
@@ -332,13 +335,38 @@ function serializeRemoteRecord(record: DayRecord) {
   };
 }
 
+function serializeVacationNotes(vacation: PlannerVacation) {
+  if (!vacation.absenceType) return vacation.notes;
+
+  const typeMarker = `${ABSENCE_TYPE_NOTE_PREFIX}${encodeURIComponent(vacation.absenceType)}]`;
+  return [typeMarker, vacation.notes].filter(Boolean).join("\n");
+}
+
+function parseVacationNotes(value: string | null) {
+  const notes = value ?? "";
+  const markerEnd = notes.indexOf("]");
+
+  if (!notes.startsWith(ABSENCE_TYPE_NOTE_PREFIX) || markerEnd === -1) {
+    return { absenceType: "", notes };
+  }
+
+  try {
+    return {
+      absenceType: decodeURIComponent(notes.slice(ABSENCE_TYPE_NOTE_PREFIX.length, markerEnd)),
+      notes: notes.slice(markerEnd + 1).replace(/^\n/, ""),
+    };
+  } catch {
+    return { absenceType: "", notes };
+  }
+}
+
 function serializeRemoteVacation(vacation: PlannerVacation) {
   return {
     id: vacation.id,
     person: vacation.person,
     start_date: vacation.startDate,
     end_date: vacation.endDate,
-    notes: vacation.notes,
+    notes: serializeVacationNotes(vacation),
     updated_at: vacation.updatedAt,
   };
 }
@@ -366,12 +394,15 @@ function normalizeRemoteVacation(row: {
   notes: string | null;
   updated_at: string | null;
 }) {
+  const { absenceType, notes } = parseVacationNotes(row.notes);
+
   return normalizeVacation({
     id: row.id,
     person: row.person ?? "",
+    absenceType,
     startDate: row.start_date ?? "",
     endDate: row.end_date ?? row.start_date ?? "",
-    notes: row.notes ?? "",
+    notes,
     updatedAt: row.updated_at ?? new Date().toISOString(),
   });
 }

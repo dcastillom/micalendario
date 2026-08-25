@@ -24,6 +24,7 @@ export interface DayRecord {
 export interface PlannerVacation {
   id: string;
   person: string;
+  absenceType: string;
   startDate: string;
   endDate: string;
   notes: string;

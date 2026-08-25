@@ -58,11 +58,20 @@ const AUTO_BACKUP_DEBOUNCE_MS = 20 * 1000;
 const NEW_ENTRY_SCROLL_TOP_OFFSET = 140;
 const MONTH_CARD_PREVIEW_LIMIT = 6;
 const IMPORT_TEMPLATE_FILE_NAME = "plantilla-informes.xlsx";
+const ABSENCE_TYPES = [
+  "Vacaciones",
+  "Enfermedad",
+  "Permiso retribuido",
+  "Permiso no retribuido",
+  "Asuntos propios",
+  "Otro",
+];
 
 interface ImportPreviewRow {
   rowNumber: number;
   sourceDate: string;
   targetDate: string;
+  fechaCampo: string;
   referencia: string;
   localidad: string;
   observaciones: string;
@@ -291,10 +300,7 @@ const hasSelectedDateVacations = computed(
   () => selectedDateVacations.value.length > 0,
 );
 const selectedDateVacationBadges = computed(() =>
-  selectedDateVacations.value.map((vacation) => ({
-    id: vacation.id,
-    label: `Ausencia ${vacation.person.trim()}`.trim(),
-  })),
+  selectedDateVacations.value.map(createAbsenceBadge),
 );
 const vacationPersonFilterOptions = computed(() => {
   const options = new Set<string>();
@@ -697,7 +703,22 @@ function getVacationWarning(person: string) {
   }
 
   const [vacation] = matchingVacations;
-  return `${vacation.person} está de vacaciones del ${formatHeader(vacation.startDate)} al ${formatHeader(vacation.endDate)}.`;
+  const absenceType = vacation.absenceType || "tipo sin especificar";
+  return `${vacation.person} tiene una ausencia por ${absenceType.toLocaleLowerCase("es-ES")} del ${formatHeader(vacation.startDate)} al ${formatHeader(vacation.endDate)}.`;
+}
+
+function formatAbsenceLabel(vacation: PlannerVacation) {
+  const person = vacation.person.trim();
+  const absenceType = vacation.absenceType.trim();
+
+  return [absenceType || "Ausencia", person].filter(Boolean).join(" ");
+}
+
+function createAbsenceBadge(vacation: PlannerVacation) {
+  return {
+    id: vacation.id,
+    label: formatAbsenceLabel(vacation),
+  };
 }
 
 function createVacationDraftForDate(dateKey: string) {
@@ -1173,10 +1194,10 @@ function triggerBrowserDownload(fileName: string, blob: Blob) {
 function downloadImportTemplate() {
   const workbook = getXlsxModule().utils.book_new();
   const worksheet = getXlsxModule().utils.aoa_to_sheet([
-    ["fecha", "referencia", "localidad", "observaciones"],
-    ["2026-04-15", "INF-001", "Madrid", "Visita inicial"],
-    ["2026-04-20", "INF-002", "Toledo", "Pendiente de revisar acceso"],
-    ["2026-05-03", "INF-003", "Segovia", "Comprobar documentacion"],
+    ["fecha", "fecha de campo", "referencia", "localidad", "observaciones"],
+    ["2026-04-15", "2026-04-20", "INF-001", "Madrid", "Visita inicial"],
+    ["2026-04-20", "2026-04-27", "INF-002", "Toledo", "Pendiente de revisar acceso"],
+    ["2026-05-03", "2026-05-09", "INF-003", "Segovia", "Comprobar documentacion"],
   ]);
 
   getXlsxModule().utils.book_append_sheet(workbook, worksheet, "Informes");
@@ -1310,6 +1331,7 @@ async function handleImportFileSelection(event: Event) {
 
     const requiredHeaders = [
       "fecha",
+      "fechadecampo",
       "referencia",
       "localidad",
       "observaciones",
@@ -1357,6 +1379,9 @@ async function handleImportFileSelection(event: Event) {
         const rawSourceDate = Array.isArray(row)
           ? row[headerIndex.get("fecha") ?? -1]
           : "";
+        const rawFechaCampo = Array.isArray(row)
+          ? row[headerIndex.get("fechadecampo") ?? -1]
+          : "";
         const rawReference = Array.isArray(row)
           ? row[headerIndex.get("referencia") ?? -1]
           : "";
@@ -1367,7 +1392,8 @@ async function handleImportFileSelection(event: Event) {
           ? row[headerIndex.get("observaciones") ?? -1]
           : "";
         const sourceDate = parseImportDateValue(rawSourceDate);
-        const targetDate = addMonthsClamped(sourceDate, 2);
+        const targetDate = addMonthsClamped(sourceDate, 1);
+        const fechaCampo = parseImportDateValue(rawFechaCampo);
         const referencia = String(rawReference ?? "").trim();
         const normalizedReference = normalizePlannerReference(referencia);
         const localityResolution = resolveImportedLocality(rawLocality);
@@ -1383,6 +1409,16 @@ async function handleImportFileSelection(event: Event) {
           blockingErrors.push(message);
         } else if (!parseStrictDateKey(sourceDate)) {
           const message = "Fecha invalida. Usa YYYY-MM-DD.";
+          errors.push(message);
+          blockingErrors.push(message);
+        }
+
+        if (!fechaCampo) {
+          const message = "Falta la fecha de campo.";
+          errors.push(message);
+          blockingErrors.push(message);
+        } else if (!parseStrictDateKey(fechaCampo)) {
+          const message = "Fecha de campo invalida. Usa YYYY-MM-DD.";
           errors.push(message);
           blockingErrors.push(message);
         }
@@ -1432,6 +1468,7 @@ async function handleImportFileSelection(event: Event) {
           rowNumber,
           sourceDate,
           targetDate,
+          fechaCampo,
           referencia,
           localidad,
           observaciones,
@@ -1485,6 +1522,7 @@ async function confirmExcelImport() {
 
       nextEntry.referencia = row.referencia;
       nextEntry.localidad = row.localidad;
+      nextEntry.fechaCampo = row.fechaCampo;
       nextEntry.observaciones = row.observaciones;
 
       existingRecord.entries.push(nextEntry);
@@ -1889,12 +1927,17 @@ async function submitVacation() {
   }
 
   const normalizedPerson = vacationDraft.value.person.trim();
+  const absenceType = vacationDraft.value.absenceType.trim();
   const startDate = vacationDraft.value.startDate.trim();
   const endDate = vacationDraft.value.endDate.trim();
 
   if (!normalizedPerson) {
     vacationError.value =
       "Selecciona una persona para registrar las vacaciones.";
+    return;
+  }
+  if (!absenceType) {
+    vacationError.value = "Selecciona el tipo de ausencia.";
     return;
   }
 
@@ -1916,6 +1959,7 @@ async function submitVacation() {
     await saveVacation({
       ...vacationDraft.value,
       person: normalizedPerson,
+      absenceType,
       startDate,
       endDate,
     });
@@ -2298,10 +2342,7 @@ function summarizeDay(
     entregado: entry.entregado ? "Entregado" : "No entregado",
   }));
 
-  const vacationBadges = dayVacations
-    .map((vacation) => vacation.person.trim())
-    .filter(Boolean)
-    .map((person) => `Ausencia ${person}`);
+  const vacationBadges = dayVacations.map(createAbsenceBadge);
 
   return {
     countLabel: `${entries.length} ${
@@ -2999,10 +3040,10 @@ onBeforeUnmount(() => {
                       cell.record,
                       cell.vacations,
                     ).vacationBadges"
-                    :key="vacationBadge"
+                    :key="vacationBadge.id"
                     class="month-card__vacations"
                   >
-                    {{ vacationBadge }}
+                    {{ vacationBadge.label }}
                   </span>
                 </div>
                 <ul
@@ -3361,6 +3402,26 @@ onBeforeUnmount(() => {
                 />
               </label>
 
+              <fieldset class="absence-type-field" :disabled="vacationBusy">
+                <legend class="field-label">Tipo de ausencia:</legend>
+                <div class="absence-type-options">
+                  <label
+                    v-for="absenceType in ABSENCE_TYPES"
+                    :key="absenceType"
+                    class="absence-type-option"
+                  >
+                    <input
+                      v-model="vacationDraft.absenceType"
+                      type="radio"
+                      name="absence-type-calendar"
+                      :value="absenceType"
+                      required
+                    />
+                    <span>{{ absenceType }}</span>
+                  </label>
+                </div>
+              </fieldset>
+
               <label class="field field--notes vacation-form__notes">
                 <span class="field-label">Notas:</span>
                 <textarea
@@ -3455,6 +3516,7 @@ onBeforeUnmount(() => {
               >
                 <div class="vacation-table__main">
                   <strong>{{ vacation.person }}</strong>
+                  <span>{{ vacation.absenceType || "Tipo sin especificar" }}</span>
                   <span>
                     {{ formatShortDate(vacation.startDate) }} -
                     {{ formatShortDate(vacation.endDate) }}
@@ -3524,9 +3586,9 @@ onBeforeUnmount(() => {
         </div>
         <p class="pedido-editor__copy">
           La plantilla debe incluir las columnas <strong>fecha</strong>,
-          <strong>referencia</strong>, <strong>localidad</strong> y
-          <strong>observaciones</strong>. La fecha de registro se calculara
-          sumando dos meses.
+          <strong>fecha de campo</strong>, <strong>referencia</strong>,
+          <strong>localidad</strong> y <strong>observaciones</strong>. La
+          fecha de registro se calculara sumando un mes.
         </p>
 
         <label class="field">
@@ -3579,6 +3641,10 @@ onBeforeUnmount(() => {
                 <div>
                   <span>Fecha registro</span>
                   <strong>{{ row.targetDate || "Sin calcular" }}</strong>
+                </div>
+                <div>
+                  <span>Fecha de campo</span>
+                  <strong>{{ row.fechaCampo || "Sin fecha" }}</strong>
                 </div>
                 <div>
                   <span>Referencia</span>
@@ -3841,6 +3907,27 @@ onBeforeUnmount(() => {
 
 .vacation-form__notes {
   grid-column: 1 / -1;
+}
+
+.absence-type-field {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.absence-type-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.55rem;
+}
+
+.absence-type-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
 }
 
 .vacation-form__actions {
