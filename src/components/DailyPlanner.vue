@@ -2454,8 +2454,16 @@ function shiftDay(offset: number) {
   selectedDate.value = `${year}-${month}-${day}`;
 }
 
-function jumpToToday() {
-  selectedDate.value = todayKey();
+async function jumpToToday() {
+  const dateKey = todayKey();
+  const shouldScrollToToday = viewMode.value === "month";
+  selectedDate.value = dateKey;
+
+  if (shouldScrollToToday) {
+    await nextTick();
+    await loadSelectedMonth(dateKey.slice(0, 7));
+    await scrollToMonthCardWhenReady(dateKey);
+  }
 }
 
 function openDayView() {
@@ -2592,6 +2600,32 @@ async function scrollToEntryWhenReady(id: string) {
     await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
 
     if (scrollToEntry(id)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function scrollToMonthCard(dateKey: string) {
+  const element = document.querySelector<HTMLElement>(
+    `[data-month-date="${dateKey}"]`,
+  );
+
+  if (!element) {
+    return false;
+  }
+
+  element.scrollIntoView({ behavior: "smooth", block: "center" });
+  return true;
+}
+
+async function scrollToMonthCardWhenReady(dateKey: string) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await nextTick();
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+
+    if (scrollToMonthCard(dateKey)) {
       return true;
     }
   }
@@ -3231,6 +3265,7 @@ onBeforeUnmount(() => {
             v-for="(cell, index) in monthCalendarCells"
             :key="cell ? cell.dateKey : `empty-${index}`"
             class="month-card"
+            :data-month-date="cell?.dateKey"
             :class="{
               'is-empty': !cell,
               'is-selected': cell?.dateKey === selectedDate,
