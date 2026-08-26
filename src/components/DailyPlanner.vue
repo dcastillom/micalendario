@@ -34,6 +34,7 @@ import {
   selectDesktopBackup,
   saveDesktopBackup,
   saveDay,
+  saveSettings,
   saveVacation,
 } from "../lib/planner-client";
 import { SPANISH_LOCALITIES } from "../lib/spanish-municipalities";
@@ -55,11 +56,12 @@ import type {
 
 const AUTO_BACKUP_INTERVAL_MS = 30 * 60 * 1000;
 const AUTO_BACKUP_DEBOUNCE_MS = 20 * 1000;
-const NEW_ENTRY_SCROLL_TOP_OFFSET = 140;
 const MONTH_CARD_PREVIEW_LIMIT = 6;
 const IMPORT_TEMPLATE_FILE_NAME = "plantilla-informes.xlsx";
-const GITHUB_LATEST_RELEASE_API_URL = "https://api.github.com/repos/dcastillom/micalendario/releases/latest";
-const CURRENT_WINDOWS_INSTALLER_URL = "https://github.com/dcastillom/micalendario/releases/download/v0.1.13/Mi.Calendario.Setup.0.1.13.exe";
+const GITHUB_LATEST_RELEASE_API_URL =
+  "https://api.github.com/repos/dcastillom/micalendario/releases/latest";
+const CURRENT_WINDOWS_INSTALLER_URL =
+  "https://github.com/dcastillom/micalendario/releases/download/v0.1.13/Mi.Calendario.Setup.0.1.13.exe";
 const ABSENCE_TYPES = [
   "Vacaciones",
   "Enfermedad",
@@ -74,6 +76,8 @@ interface ImportPreviewRow {
   sourceDate: string;
   targetDate: string;
   fechaCampo: string;
+  laborante: string;
+  plano: "" | "si" | "no";
   referencia: string;
   localidad: string;
   observaciones: string;
@@ -676,12 +680,54 @@ const filteredReferenceResults = computed(() => {
     .sort((left, right) => right.dateKey.localeCompare(left.dateKey));
 });
 
+function normalizePersonOption(value: string) {
+  return value.trim().toLocaleLowerCase("es-ES");
+}
+
+function getPlannerPersonOptions() {
+  const optionsByNormalizedValue = new Map<string, string>();
+  const addOption = (value: string) => {
+    const trimmedValue = value.trim();
+    const normalizedValue = normalizePersonOption(trimmedValue);
+    if (normalizedValue && !optionsByNormalizedValue.has(normalizedValue)) {
+      optionsByNormalizedValue.set(normalizedValue, trimmedValue);
+    }
+  };
+
+  asignadoOptions.value.forEach(addOption);
+  Object.values(allRecords.value).forEach((record) => {
+    record.entries.forEach((entry) => {
+      addOption(entry.asignado);
+      addOption(entry.laborante);
+    });
+  });
+
+  return [...optionsByNormalizedValue.values()].sort((left, right) =>
+    left.localeCompare(right, "es", { sensitivity: "base" }),
+  );
+}
+
 function getAsignadoSelectOptions(currentValue: string) {
-  if (!currentValue || asignadoOptions.value.includes(currentValue)) {
-    return asignadoOptions.value;
+  const options = getPlannerPersonOptions();
+  const normalizedCurrentValue = normalizePersonOption(currentValue);
+
+  if (
+    !normalizedCurrentValue ||
+    options.some(
+      (option) => normalizePersonOption(option) === normalizedCurrentValue,
+    )
+  ) {
+    return options;
   }
 
-  return [currentValue, ...asignadoOptions.value];
+  return [currentValue, ...options];
+}
+
+function isAvailablePerson(value: string) {
+  const normalizedValue = normalizePersonOption(value);
+  return getPlannerPersonOptions().some(
+    (option) => normalizePersonOption(option) === normalizedValue,
+  );
 }
 
 function getVacationsForPersonOnSelectedDate(person: string) {
@@ -1072,9 +1118,10 @@ function normalizeHeaderLabel(value: unknown) {
   return String(value ?? "")
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
+    .replace(/º/g, "o")
     .trim()
     .toLocaleLowerCase("es-ES")
-    .replace(/\s+/g, "");
+    .replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
 function formatDateKeyFromParts(year: number, month: number, day: number) {
@@ -1146,30 +1193,34 @@ function parseImportDateValue(value: unknown) {
   return trimmed;
 }
 
-function addMonthsClamped(dateKey: string, monthsToAdd: number) {
+function addWeeks(dateKey: string, weeksToAdd: number) {
   const parts = parseStrictDateKey(dateKey);
-
-  if (!parts) {
-    return "";
-  }
-
-  const targetMonthIndex = parts.month - 1 + monthsToAdd;
-  const targetYear = parts.year + Math.floor(targetMonthIndex / 12);
-  const normalizedMonthIndex = ((targetMonthIndex % 12) + 12) % 12;
-  const lastDayOfTargetMonth = new Date(
-    targetYear,
-    normalizedMonthIndex + 1,
-    0,
-    12,
-    0,
-    0,
-  ).getDate();
-  const targetDay = Math.min(parts.day, lastDayOfTargetMonth);
-
+  if (!parts) return "";
+  const targetDate = new Date(parts.year, parts.month - 1, parts.day, 12, 0, 0);
+  targetDate.setDate(targetDate.getDate() + weeksToAdd * 7);
   return formatDateKeyFromParts(
-    targetYear,
-    normalizedMonthIndex + 1,
-    targetDay,
+    targetDate.getFullYear(),
+    targetDate.getMonth() + 1,
+    targetDate.getDate(),
+  );
+}
+
+function normalizeImportedPlano(value: unknown): "" | "si" | "no" {
+  const normalizedValue = String(value ?? "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .trim()
+    .toLocaleLowerCase("es-ES");
+
+  if (["si", "s", "1", "true", "x"].includes(normalizedValue)) return "si";
+  return "no";
+}
+
+function getImportedFirstName(value: unknown) {
+  return (
+    String(value ?? "")
+      .trim()
+      .split(/\s+/)[0] ?? ""
   );
 }
 
@@ -1196,25 +1247,53 @@ function triggerBrowserDownload(fileName: string, blob: Blob) {
 function downloadImportTemplate() {
   const workbook = getXlsxModule().utils.book_new();
   const worksheet = getXlsxModule().utils.aoa_to_sheet([
-    ["fecha", "fecha de campo", "referencia", "localidad", "observaciones"],
-    ["2026-04-15", "2026-04-20", "INF-001", "Madrid", "Visita inicial"],
     [
-      "2026-04-20",
-      "2026-04-27",
-      "INF-002",
-      "Toledo",
-      "Pendiente de revisar acceso",
+      "Laborante",
+      "F.Muestreo",
+      "NºObra",
+      "Obra",
+      "Material",
+      "Población",
+      "Descripción",
+      "Cantidad",
+      "Planos",
     ],
     [
-      "2026-05-03",
-      "2026-05-09",
-      "INF-003",
-      "Segovia",
-      "Comprobar documentacion",
+      "César Pérez Agudo",
+      "08/07/2026",
+      "37583",
+      "VIVIENDA UNIFAMILIAR, C/ TENIS 4, FUENSALIDA (TOLEDO)",
+      "ENSAYO DE PENETRACIÓN DPSH",
+      "FUENSALIDA (TOLEDO)",
+      "P-1, P-2, P-3",
+      "",
+      "",
+    ],
+    [
+      "César Pérez Agudo",
+      "08/07/2026",
+      "37511",
+      "VIVIENDA UNIFAMILIAR, C/ ATENAS 9, LA PUEBLA DE MONTALBAN (TOLEDO)",
+      "ENSAYO DE PENETRACIÓN DPSH",
+      "LA PUEBLA DE MONTALBAN (TOLEDO)",
+      "P-1, P-2, P-3",
+      "",
+      "",
     ],
   ]);
+  worksheet["!cols"] = [
+    { wch: 24 },
+    { wch: 14 },
+    { wch: 12 },
+    { wch: 56 },
+    { wch: 32 },
+    { wch: 34 },
+    { wch: 24 },
+    { wch: 12 },
+    { wch: 12 },
+  ];
 
-  getXlsxModule().utils.book_append_sheet(workbook, worksheet, "Informes");
+  getXlsxModule().utils.book_append_sheet(workbook, worksheet, "Listado");
 
   const workbookData = getXlsxModule().write(workbook, {
     bookType: "xlsx",
@@ -1344,11 +1423,14 @@ async function handleImportFileSelection(event: Event) {
     });
 
     const requiredHeaders = [
-      "fecha",
-      "fechadecampo",
-      "referencia",
-      "localidad",
-      "observaciones",
+      "laborante",
+      "fmuestreo",
+      "noobra",
+      "obra",
+      "material",
+      "poblacion",
+      "descripcion",
+      "planos",
     ];
     const missingHeaders = requiredHeaders.filter(
       (header) => !headerIndex.has(header),
@@ -1390,29 +1472,43 @@ async function handleImportFileSelection(event: Event) {
           : false,
       )
       .map(({ row, rowNumber }) => {
-        const rawSourceDate = Array.isArray(row)
-          ? row[headerIndex.get("fecha") ?? -1]
-          : "";
         const rawFechaCampo = Array.isArray(row)
-          ? row[headerIndex.get("fechadecampo") ?? -1]
+          ? row[headerIndex.get("fmuestreo") ?? -1]
+          : "";
+        const rawLaborante = Array.isArray(row)
+          ? row[headerIndex.get("laborante") ?? -1]
           : "";
         const rawReference = Array.isArray(row)
-          ? row[headerIndex.get("referencia") ?? -1]
+          ? row[headerIndex.get("noobra") ?? -1]
+          : "";
+        const rawWork = Array.isArray(row)
+          ? row[headerIndex.get("obra") ?? -1]
+          : "";
+        const rawMaterial = Array.isArray(row)
+          ? row[headerIndex.get("material") ?? -1]
           : "";
         const rawLocality = Array.isArray(row)
-          ? row[headerIndex.get("localidad") ?? -1]
+          ? row[headerIndex.get("poblacion") ?? -1]
           : "";
-        const rawObservations = Array.isArray(row)
-          ? row[headerIndex.get("observaciones") ?? -1]
+        const rawDescription = Array.isArray(row)
+          ? row[headerIndex.get("descripcion") ?? -1]
           : "";
-        const sourceDate = parseImportDateValue(rawSourceDate);
-        const targetDate = addMonthsClamped(sourceDate, 1);
+        const rawPlanos = Array.isArray(row)
+          ? row[headerIndex.get("planos") ?? -1]
+          : "";
+        const sourceDate = parseImportDateValue(rawFechaCampo);
+        const targetDate = addWeeks(sourceDate, 5);
         const fechaCampo = parseImportDateValue(rawFechaCampo);
+        const laborante = getImportedFirstName(rawLaborante);
         const referencia = String(rawReference ?? "").trim();
         const normalizedReference = normalizePlannerReference(referencia);
         const localityResolution = resolveImportedLocality(rawLocality);
         let localidad = localityResolution.locality;
-        let observaciones = String(rawObservations ?? "").trim();
+        let observaciones = [rawMaterial, rawWork, rawDescription]
+          .map((value) => String(value ?? "").trim())
+          .filter(Boolean)
+          .join("\n");
+        const plano = normalizeImportedPlano(rawPlanos);
         const errors: string[] = [];
         const blockingErrors: string[] = [];
         const warnings: string[] = [];
@@ -1483,6 +1579,8 @@ async function handleImportFileSelection(event: Event) {
           sourceDate,
           targetDate,
           fechaCampo,
+          laborante,
+          plano,
           referencia,
           localidad,
           observaciones,
@@ -1524,6 +1622,29 @@ async function confirmExcelImport() {
   try {
     await flushPendingDaySave();
 
+    const existingLaborantes = new Set(
+      asignadoOptions.value.map((option) =>
+        option.trim().toLocaleLowerCase("es-ES"),
+      ),
+    );
+    const newLaborantes = readyImportRows.value
+      .map((row) => row.laborante)
+      .filter((laborante) => {
+        const normalizedLaborante = laborante.toLocaleLowerCase("es-ES");
+        if (!normalizedLaborante || existingLaborantes.has(normalizedLaborante))
+          return false;
+        existingLaborantes.add(normalizedLaborante);
+        return true;
+      });
+
+    if (newLaborantes.length > 0) {
+      const settings = await saveSettings({
+        ...plannerSettings.value,
+        asignadoOptions: [...asignadoOptions.value, ...newLaborantes],
+      });
+      applyPlannerSettings(settings);
+    }
+
     const recordsToSave = new Map<string, DayRecord>();
 
     for (const row of readyImportRows.value) {
@@ -1534,6 +1655,8 @@ async function confirmExcelImport() {
         );
       const nextEntry = createEmptyEntry();
 
+      nextEntry.laborante = row.laborante;
+      nextEntry.plano = row.plano;
       nextEntry.referencia = row.referencia;
       nextEntry.localidad = row.localidad;
       nextEntry.fechaCampo = row.fechaCampo;
@@ -1782,7 +1905,7 @@ async function applyLoadedDayRecord(record: DayRecord) {
     );
 
     if (hasTargetEntry) {
-      scrollToEntry(pendingEntryId);
+      await scrollToEntryWhenReady(pendingEntryId);
       focusEntryField(pendingEntryId);
     }
 
@@ -2120,16 +2243,25 @@ async function openLatestRelease() {
     });
     const release = await response.json();
     const installer = Array.isArray(release.assets)
-      ? release.assets.find((asset: { name?: string }) => /setup.*\.exe$/i.test(asset.name ?? ""))
+      ? release.assets.find((asset: { name?: string }) =>
+          /setup.*\.exe$/i.test(asset.name ?? ""),
+        )
       : null;
 
     if (!response.ok || !installer?.browser_download_url) {
       throw new Error("No se encontró el instalador de Windows.");
     }
 
-    window.open(installer.browser_download_url, "_blank", "noopener,noreferrer");
+    window.open(
+      installer.browser_download_url,
+      "_blank",
+      "noopener,noreferrer",
+    );
   } catch (error) {
-    console.warn("No se pudo localizar la última release; se usará el instalador disponible.", error);
+    console.warn(
+      "No se pudo localizar la última release; se usará el instalador disponible.",
+      error,
+    );
     window.open(CURRENT_WINDOWS_INSTALLER_URL, "_blank", "noopener,noreferrer");
   }
 }
@@ -2347,8 +2479,34 @@ function openDayFromMonth(dateKey: string) {
   selectedDate.value = dateKey;
 }
 
-function openDayFromReferenceResult(dateKey: string) {
+async function openDayFromReferenceResult(dateKey: string, entryId: string) {
   referenceFilter.value = "";
+  pendingEntryId = entryId;
+  viewMode.value = "day";
+
+  if (selectedDate.value !== dateKey) {
+    selectedDate.value = dateKey;
+    await nextTick();
+  }
+
+  await loadSelectedDay(dateKey);
+  await scrollToEntryWhenReady(entryId);
+  focusEntryField(entryId);
+}
+
+function handleMonthCardClick(dateKey: string, event: MouseEvent) {
+  const target = event.target;
+  const entryElement =
+    target instanceof Element
+      ? target.closest<HTMLElement>("[data-month-entry-id]")
+      : null;
+  const entryId = entryElement?.dataset.monthEntryId;
+
+  if (entryId) {
+    void openDayFromReferenceResult(dateKey, entryId);
+    return;
+  }
+
   openDayFromMonth(dateKey);
 }
 
@@ -2406,26 +2564,43 @@ function setEntryRowRef(id: string, element: Element | null) {
   entryRowElements.delete(id);
 }
 
+function getEntryRowElement(id: string) {
+  return (
+    entryRowElements.get(id) ??
+    document.querySelector<HTMLElement>(`[data-entry-id="${id}"]`) ??
+    null
+  );
+}
+
 function scrollToEntry(id: string) {
-  const element = entryRowElements.get(id);
+  const element = getEntryRowElement(id);
 
   if (!element) {
-    return;
+    return false;
   }
 
-  const targetTop =
-    window.scrollY +
-    element.getBoundingClientRect().top -
-    NEW_ENTRY_SCROLL_TOP_OFFSET;
-
-  window.scrollTo({
-    top: Math.max(0, targetTop),
+  element.scrollIntoView({
     behavior: "smooth",
+    block: "center",
   });
+  return true;
+}
+
+async function scrollToEntryWhenReady(id: string) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await nextTick();
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+
+    if (scrollToEntry(id)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function focusEntryField(id: string) {
-  const element = entryRowElements.get(id);
+  const element = getEntryRowElement(id);
   const target = element?.querySelector("input, select, textarea");
 
   if (
@@ -3000,7 +3175,7 @@ onBeforeUnmount(() => {
             :key="`${result.dateKey}-${result.id}`"
             class="filter-result"
             type="button"
-            @click="openDayFromReferenceResult(result.dateKey)"
+            @click="openDayFromReferenceResult(result.dateKey, result.id)"
           >
             <div class="filter-result__topbar">
               <strong>{{ formatHeader(result.dateKey) }}</strong>
@@ -3066,7 +3241,7 @@ onBeforeUnmount(() => {
               <button
                 class="month-card__button"
                 type="button"
-                @click="openDayFromMonth(cell.dateKey)"
+                @click="handleMonthCardClick(cell.dateKey, $event)"
               >
                 <span class="month-card__day">{{ cell.day }}</span>
                 <span class="month-card__count">{{
@@ -3100,6 +3275,7 @@ onBeforeUnmount(() => {
                     v-for="item in summarizeDay(cell.record, cell.vacations)
                       .preview"
                     :key="item.id"
+                    :data-month-entry-id="item.id"
                   >
                     <div class="month-card__entry-top">
                       <em>{{ item.referencia }}</em>
@@ -3193,6 +3369,7 @@ onBeforeUnmount(() => {
             v-for="(entry, index) in dayRecord.entries"
             :key="entry.id"
             :ref="(element) => setEntryRowRef(entry.id, element)"
+            :data-entry-id="entry.id"
             class="sheet-grid sheet-grid--row"
             :class="{ 'sheet-grid--readonly': !canEditReports }"
           >
@@ -3251,7 +3428,7 @@ onBeforeUnmount(() => {
                     :value="asignadoOption"
                   >
                     {{
-                      asignadoOptions.includes(asignadoOption)
+                      isAvailablePerson(asignadoOption)
                         ? asignadoOption
                         : `${asignadoOption} (ya no disponible)`
                     }}
@@ -3274,7 +3451,7 @@ onBeforeUnmount(() => {
                     :value="laboranteOption"
                   >
                     {{
-                      asignadoOptions.includes(laboranteOption)
+                      isAvailablePerson(laboranteOption)
                         ? laboranteOption
                         : `${laboranteOption} (ya no disponible)`
                     }}
@@ -3634,10 +3811,12 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <p class="pedido-editor__copy">
-          La plantilla debe incluir las columnas <strong>fecha</strong>,
-          <strong>fecha de campo</strong>, <strong>referencia</strong>,
-          <strong>localidad</strong> y <strong>observaciones</strong>. La fecha
-          de registro se calculara sumando un mes.
+          La plantilla debe incluir las columnas <strong>Laborante</strong>,
+          <strong>F.Muestreo</strong>, <strong>NºObra</strong>,
+          <strong>Obra</strong>, <strong>Material</strong>,
+          <strong>Población</strong>, <strong>Descripción</strong> y
+          <strong>Planos</strong>.<br />La fecha de registro se calculará
+          sumando cinco semanas a la fecha de muestreo.
         </p>
 
         <label class="field">
@@ -3684,10 +3863,6 @@ onBeforeUnmount(() => {
               </div>
               <div class="import-preview__grid">
                 <div>
-                  <span>Fecha origen</span>
-                  <strong>{{ row.sourceDate || "Sin fecha" }}</strong>
-                </div>
-                <div>
                   <span>Fecha registro</span>
                   <strong>{{ row.targetDate || "Sin calcular" }}</strong>
                 </div>
@@ -3696,17 +3871,32 @@ onBeforeUnmount(() => {
                   <strong>{{ row.fechaCampo || "Sin fecha" }}</strong>
                 </div>
                 <div>
+                  <span>Laborante</span>
+                  <strong>{{ row.laborante || "Sin laborante" }}</strong>
+                </div>
+                <div>
                   <span>Referencia</span>
                   <strong>{{ row.referencia || "Sin referencia" }}</strong>
+                </div>
+                <div>
+                  <span>Planos</span>
+                  <strong>{{
+                    row.plano === "si"
+                      ? "Sí"
+                      : row.plano === "no"
+                        ? "No"
+                        : "Sin indicar"
+                  }}</strong>
                 </div>
                 <div>
                   <span>Localidad</span>
                   <strong>{{ row.localidad || "Sin localidad" }}</strong>
                 </div>
               </div>
-              <!-- <p v-if="row.observaciones" class="import-preview__observaciones">
-                {{ row.observaciones }}
-              </p> -->
+              <div class="import-preview__observaciones">
+                <span>Observaciones</span>
+                <p>{{ row.observaciones || "Sin observaciones" }}</p>
+              </div>
               <ul v-if="row.errors.length" class="import-preview__errors">
                 <li v-for="errorItem in row.errors" :key="errorItem">
                   {{ errorItem }}
@@ -3809,7 +3999,7 @@ onBeforeUnmount(() => {
         aria-labelledby="move-dialog-title"
       >
         <div class="confirm-dialog__header">
-          <h2 id="move-dialog-title">Mover informe a otro día</h2>
+          <h2 id="move-dialog-title">Mover informe</h2>
           <button
             class="confirm-dialog__close"
             type="button"

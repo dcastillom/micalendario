@@ -1613,9 +1613,26 @@ button {
 }
 
 .import-preview__observaciones {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(31, 107, 90, 0.08);
+}
+
+.import-preview__observaciones span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.import-preview__observaciones p {
   margin: 0;
   color: var(--ink);
   line-height: 1.5;
+  white-space: pre-line;
 }
 
 .import-preview__errors {
@@ -1842,6 +1859,11 @@ button {
   padding: 8px 9px;
   border-radius: 12px;
   background: rgba(31, 107, 90, 0.08);
+  cursor: pointer;
+}
+
+.month-card__list li:hover {
+  background: rgba(31, 107, 90, 0.15);
 }
 
 .month-card__list strong,

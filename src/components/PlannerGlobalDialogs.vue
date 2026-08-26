@@ -13,22 +13,33 @@ import {
   loadVacations,
   normalizePlannerReference,
   saveDay,
+  saveSettings,
   saveVacation,
 } from "../lib/planner-client";
-import { ensurePlannerAuthInitialized, plannerAuthState } from "../lib/planner-auth";
+import {
+  ensurePlannerAuthInitialized,
+  plannerAuthState,
+} from "../lib/planner-auth";
 import {
   dispatchPlannerDataUpdated,
+  dispatchPlannerSettingsUpdated,
   PLANNER_OPEN_IMPORT_DIALOG_EVENT,
   PLANNER_OPEN_VACATIONS_DIALOG_EVENT,
 } from "../lib/planner-ui-events";
 import { SPANISH_LOCALITIES } from "../lib/spanish-municipalities";
-import type { DayRecord, PlannerSettings, PlannerVacation } from "../lib/planner-types";
+import type {
+  DayRecord,
+  PlannerSettings,
+  PlannerVacation,
+} from "../lib/planner-types";
 
 interface ImportPreviewRow {
   rowNumber: number;
   sourceDate: string;
   targetDate: string;
   fechaCampo: string;
+  laborante: string;
+  plano: "" | "si" | "no";
   referencia: string;
   localidad: string;
   observaciones: string;
@@ -143,19 +154,23 @@ function buildLocalityTokenVariantsFromRawValue(rawValue: string) {
   return [...variants].filter(Boolean);
 }
 
-const LOCALITY_CATALOG: LocalityCatalogEntry[] = SPANISH_LOCALITIES.map((locality) => {
-  const fullToken = normalizeLocalityToken(locality);
-  const municipalityMatch = locality.match(/^(.*?)\s*(?:\(([^()]*)\))?$/);
-  const municipalityToken = normalizeLocalityToken((municipalityMatch?.[1] ?? locality).trim());
+const LOCALITY_CATALOG: LocalityCatalogEntry[] = SPANISH_LOCALITIES.map(
+  (locality) => {
+    const fullToken = normalizeLocalityToken(locality);
+    const municipalityMatch = locality.match(/^(.*?)\s*(?:\(([^()]*)\))?$/);
+    const municipalityToken = normalizeLocalityToken(
+      (municipalityMatch?.[1] ?? locality).trim(),
+    );
 
-  return {
-    locality,
-    fullToken,
-    municipalityToken,
-    fullCompactToken: compactLocalityToken(fullToken),
-    municipalityCompactToken: compactLocalityToken(municipalityToken),
-  };
-});
+    return {
+      locality,
+      fullToken,
+      municipalityToken,
+      fullCompactToken: compactLocalityToken(fullToken),
+      municipalityCompactToken: compactLocalityToken(municipalityToken),
+    };
+  },
+);
 
 const LOCALITY_BY_FULL_TOKEN = new Map<string, string[]>();
 const LOCALITY_BY_MUNICIPALITY_TOKEN = new Map<string, string[]>();
@@ -171,7 +186,10 @@ for (const locality of LOCALITY_CATALOG) {
   add(LOCALITY_BY_FULL_TOKEN, locality.fullToken);
   add(LOCALITY_BY_MUNICIPALITY_TOKEN, locality.municipalityToken);
   add(LOCALITY_BY_FULL_COMPACT_TOKEN, locality.fullCompactToken);
-  add(LOCALITY_BY_MUNICIPALITY_COMPACT_TOKEN, locality.municipalityCompactToken);
+  add(
+    LOCALITY_BY_MUNICIPALITY_COMPACT_TOKEN,
+    locality.municipalityCompactToken,
+  );
 }
 
 function getUniqueLocalityMatch(target: Map<string, string[]>, key: string) {
@@ -179,7 +197,11 @@ function getUniqueLocalityMatch(target: Map<string, string[]>, key: string) {
   return matches.length === 1 ? matches[0] : "";
 }
 
-function levenshteinDistanceWithinMax(left: string, right: string, maxDistance: number) {
+function levenshteinDistanceWithinMax(
+  left: string,
+  right: string,
+  maxDistance: number,
+) {
   const leftLength = left.length;
   const rightLength = right.length;
 
@@ -193,7 +215,8 @@ function levenshteinDistanceWithinMax(left: string, right: string, maxDistance: 
     let rowMin = current[0];
 
     for (let rightIndex = 1; rightIndex <= rightLength; rightIndex += 1) {
-      const substitutionCost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
+      const substitutionCost =
+        left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
       const insertion = current[rightIndex - 1] + 1;
       const deletion = previous[rightIndex] + 1;
       const substitution = previous[rightIndex - 1] + substitutionCost;
@@ -224,7 +247,11 @@ function findFuzzyLocalityMatch(localityCompactToken: string) {
   for (const locality of LOCALITY_CATALOG) {
     const candidateToken = locality.municipalityCompactToken;
     if (!candidateToken || candidateToken[0] !== firstCharacter) continue;
-    const distance = levenshteinDistanceWithinMax(localityCompactToken, candidateToken, maxDistance);
+    const distance = levenshteinDistanceWithinMax(
+      localityCompactToken,
+      candidateToken,
+      maxDistance,
+    );
     if (distance === null) continue;
     if (distance < bestDistance) {
       bestDistance = distance;
@@ -243,30 +270,63 @@ function findFuzzyLocalityMatch(localityCompactToken: string) {
 function resolveImportedLocality(rawValue: unknown) {
   const originalValue = String(rawValue ?? "").trim();
   if (!originalValue) {
-    return { locality: "", originalValue, wasCorrected: false, error: "Falta la localidad." };
+    return {
+      locality: "",
+      originalValue,
+      wasCorrected: false,
+      error: "Falta la localidad.",
+    };
   }
 
-  const localityTokenVariants = buildLocalityTokenVariantsFromRawValue(originalValue);
-  const localityCompactTokenVariants = [...new Set(localityTokenVariants.map((variant) => compactLocalityToken(variant)))];
+  const localityTokenVariants =
+    buildLocalityTokenVariantsFromRawValue(originalValue);
+  const localityCompactTokenVariants = [
+    ...new Set(
+      localityTokenVariants.map((variant) => compactLocalityToken(variant)),
+    ),
+  ];
 
   const directMatch =
-    localityTokenVariants.map((variant) => getUniqueLocalityMatch(LOCALITY_BY_FULL_TOKEN, variant)).find(Boolean) ||
-    localityTokenVariants.map((variant) => getUniqueLocalityMatch(LOCALITY_BY_MUNICIPALITY_TOKEN, variant)).find(Boolean) ||
-    localityCompactTokenVariants.map((variant) => getUniqueLocalityMatch(LOCALITY_BY_FULL_COMPACT_TOKEN, variant)).find(Boolean) ||
-    localityCompactTokenVariants.map((variant) => getUniqueLocalityMatch(LOCALITY_BY_MUNICIPALITY_COMPACT_TOKEN, variant)).find(Boolean);
+    localityTokenVariants
+      .map((variant) => getUniqueLocalityMatch(LOCALITY_BY_FULL_TOKEN, variant))
+      .find(Boolean) ||
+    localityTokenVariants
+      .map((variant) =>
+        getUniqueLocalityMatch(LOCALITY_BY_MUNICIPALITY_TOKEN, variant),
+      )
+      .find(Boolean) ||
+    localityCompactTokenVariants
+      .map((variant) =>
+        getUniqueLocalityMatch(LOCALITY_BY_FULL_COMPACT_TOKEN, variant),
+      )
+      .find(Boolean) ||
+    localityCompactTokenVariants
+      .map((variant) =>
+        getUniqueLocalityMatch(LOCALITY_BY_MUNICIPALITY_COMPACT_TOKEN, variant),
+      )
+      .find(Boolean);
 
   if (directMatch) {
     return {
       locality: directMatch,
       originalValue,
-      wasCorrected: normalizeLocalityToken(directMatch) !== normalizeLocalityToken(originalValue),
+      wasCorrected:
+        normalizeLocalityToken(directMatch) !==
+        normalizeLocalityToken(originalValue),
       error: "",
     };
   }
 
-  const fuzzyMatch = localityCompactTokenVariants.map((variant) => findFuzzyLocalityMatch(variant)).find(Boolean);
+  const fuzzyMatch = localityCompactTokenVariants
+    .map((variant) => findFuzzyLocalityMatch(variant))
+    .find(Boolean);
   if (fuzzyMatch) {
-    return { locality: fuzzyMatch, originalValue, wasCorrected: true, error: "" };
+    return {
+      locality: fuzzyMatch,
+      originalValue,
+      wasCorrected: true,
+      error: "",
+    };
   }
 
   return {
@@ -281,9 +341,10 @@ function normalizeHeaderLabel(value: unknown) {
   return String(value ?? "")
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
+    .replace(/º/g, "o")
     .trim()
     .toLocaleLowerCase("es-ES")
-    .replace(/\s+/g, "");
+    .replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
 function formatDateKeyFromParts(year: number, month: number, day: number) {
@@ -297,13 +358,22 @@ function parseStrictDateKey(value: string) {
   const month = Number.parseInt(match[2], 10);
   const day = Number.parseInt(match[3], 10);
   const date = new Date(year, month - 1, day, 12, 0, 0);
-  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  )
+    return null;
   return { year, month, day };
 }
 
 function parseImportDateValue(value: unknown) {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return formatDateKeyFromParts(value.getFullYear(), value.getMonth() + 1, value.getDate());
+    return formatDateKeyFromParts(
+      value.getFullYear(),
+      value.getMonth() + 1,
+      value.getDate(),
+    );
   }
 
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -314,7 +384,8 @@ function parseImportDateValue(value: unknown) {
   const trimmed = String(value ?? "").trim();
   if (!trimmed) return "";
   const isoParts = parseStrictDateKey(trimmed);
-  if (isoParts) return formatDateKeyFromParts(isoParts.year, isoParts.month, isoParts.day);
+  if (isoParts)
+    return formatDateKeyFromParts(isoParts.year, isoParts.month, isoParts.day);
   const europeanMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (europeanMatch) {
     return formatDateKeyFromParts(
@@ -326,15 +397,31 @@ function parseImportDateValue(value: unknown) {
   return trimmed;
 }
 
-function addMonthsClamped(dateKey: string, monthsToAdd: number) {
+function addWeeks(dateKey: string, weeksToAdd: number) {
   const parts = parseStrictDateKey(dateKey);
   if (!parts) return "";
-  const targetMonthIndex = parts.month - 1 + monthsToAdd;
-  const targetYear = parts.year + Math.floor(targetMonthIndex / 12);
-  const normalizedMonthIndex = ((targetMonthIndex % 12) + 12) % 12;
-  const lastDayOfTargetMonth = new Date(targetYear, normalizedMonthIndex + 1, 0, 12, 0, 0).getDate();
-  const targetDay = Math.min(parts.day, lastDayOfTargetMonth);
-  return formatDateKeyFromParts(targetYear, normalizedMonthIndex + 1, targetDay);
+  const targetDate = new Date(parts.year, parts.month - 1, parts.day, 12, 0, 0);
+  targetDate.setDate(targetDate.getDate() + weeksToAdd * 7);
+  return formatDateKeyFromParts(
+    targetDate.getFullYear(),
+    targetDate.getMonth() + 1,
+    targetDate.getDate(),
+  );
+}
+
+function normalizeImportedPlano(value: unknown): "" | "si" | "no" {
+  const normalizedValue = String(value ?? "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .trim()
+    .toLocaleLowerCase("es-ES");
+
+  if (["si", "s", "1", "true", "x"].includes(normalizedValue)) return "si";
+  return "no";
+}
+
+function getImportedFirstName(value: unknown) {
+  return String(value ?? "").trim().split(/\s+/)[0] ?? "";
 }
 
 function triggerBrowserDownload(fileName: string, blob: Blob) {
@@ -353,16 +440,61 @@ function triggerBrowserDownload(fileName: string, blob: Blob) {
 function downloadImportTemplate() {
   const workbook = xlsxModule.utils.book_new();
   const worksheet = xlsxModule.utils.aoa_to_sheet([
-    ["fecha", "fecha de campo", "referencia", "localidad", "observaciones"],
-    ["2026-04-15", "2026-04-20", "INF-001", "Madrid", "Visita inicial"],
-    ["2026-04-20", "2026-04-27", "INF-002", "Toledo", "Pendiente de revisar acceso"],
-    ["2026-05-03", "2026-05-09", "INF-003", "Segovia", "Comprobar documentacion"],
+    [
+      "Laborante",
+      "F.Muestreo",
+      "NºObra",
+      "Obra",
+      "Material",
+      "Población",
+      "Descripción",
+      "Cantidad",
+      "Planos",
+    ],
+    [
+      "César Pérez Agudo",
+      "08/07/2026",
+      "37583",
+      "VIVIENDA UNIFAMILIAR, C/ TENIS 4, FUENSALIDA (TOLEDO)",
+      "ENSAYO DE PENETRACIÓN DPSH",
+      "FUENSALIDA (TOLEDO)",
+      "P-1, P-2, P-3",
+      "",
+      "",
+    ],
+    [
+      "César Pérez Agudo",
+      "08/07/2026",
+      "37511",
+      "VIVIENDA UNIFAMILIAR, C/ ATENAS 9, LA PUEBLA DE MONTALBAN (TOLEDO)",
+      "ENSAYO DE PENETRACIÓN DPSH",
+      "LA PUEBLA DE MONTALBAN (TOLEDO)",
+      "P-1, P-2, P-3",
+      "",
+      "",
+    ],
   ]);
-  xlsxModule.utils.book_append_sheet(workbook, worksheet, "Informes");
-  const workbookData = xlsxModule.write(workbook, { bookType: "xlsx", type: "array" });
+  worksheet["!cols"] = [
+    { wch: 24 },
+    { wch: 14 },
+    { wch: 12 },
+    { wch: 56 },
+    { wch: 32 },
+    { wch: 34 },
+    { wch: 24 },
+    { wch: 12 },
+    { wch: 12 },
+  ];
+  xlsxModule.utils.book_append_sheet(workbook, worksheet, "Listado");
+  const workbookData = xlsxModule.write(workbook, {
+    bookType: "xlsx",
+    type: "array",
+  });
   triggerBrowserDownload(
     IMPORT_TEMPLATE_FILE_NAME,
-    new Blob([workbookData], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+    new Blob([workbookData], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
   );
 }
 
@@ -378,41 +510,77 @@ const importSummary = ref("");
 const importBusy = ref(false);
 
 const vacationDialogOpen = ref(false);
-const vacationDraft = ref<PlannerVacation>(createVacationDraftForDate(todayKey()));
+const vacationDraft = ref<PlannerVacation>(
+  createVacationDraftForDate(todayKey()),
+);
 const vacationBusy = ref(false);
 const vacationError = ref("");
 const vacationPersonFilter = ref("");
 const vacationStatusFilter = ref<"all" | "active" | "future" | "past">("all");
 const vacationMonthFilter = ref("");
-const vacationSort = ref<"start-asc" | "start-desc" | "person-asc">("start-desc");
+const vacationSort = ref<"start-asc" | "start-desc" | "person-asc">(
+  "start-desc",
+);
 
 const canEditReports = computed(() => plannerAuthState.canEditReports.value);
 const asignadoOptions = computed(() => plannerSettings.value.asignadoOptions);
-const readyImportRows = computed(() => importRows.value.filter((row) => row.status === "ready"));
-const isEditingVacation = computed(() => vacations.value.some((vacation) => vacation.id === vacationDraft.value.id));
+const readyImportRows = computed(() =>
+  importRows.value.filter((row) => row.status === "ready"),
+);
+const isEditingVacation = computed(() =>
+  vacations.value.some((vacation) => vacation.id === vacationDraft.value.id),
+);
 const vacationPersonFilterOptions = computed(() => {
   const options = new Set<string>();
-  asignadoOptions.value.forEach((option) => option.trim() && options.add(option.trim()));
-  vacations.value.forEach((vacation) => vacation.person.trim() && options.add(vacation.person.trim()));
-  return [...options].sort((left, right) => left.localeCompare(right, "es", { sensitivity: "base" }));
+  asignadoOptions.value.forEach(
+    (option) => option.trim() && options.add(option.trim()),
+  );
+  vacations.value.forEach(
+    (vacation) => vacation.person.trim() && options.add(vacation.person.trim()),
+  );
+  return [...options].sort((left, right) =>
+    left.localeCompare(right, "es", { sensitivity: "base" }),
+  );
 });
 const filteredVacations = computed(() => {
-  const normalizedPersonFilter = vacationPersonFilter.value.trim().toLocaleLowerCase("es-ES");
+  const normalizedPersonFilter = vacationPersonFilter.value
+    .trim()
+    .toLocaleLowerCase("es-ES");
   const today = todayKey();
   const filtered = vacations.value.filter((vacation) => {
-    if (normalizedPersonFilter && !vacation.person.toLocaleLowerCase("es-ES").includes(normalizedPersonFilter)) return false;
-    if (vacationMonthFilter.value && !(vacation.startDate.slice(0, 7) <= vacationMonthFilter.value && vacation.endDate.slice(0, 7) >= vacationMonthFilter.value)) return false;
-    if (vacationStatusFilter.value === "active") return vacation.startDate <= today && vacation.endDate >= today;
-    if (vacationStatusFilter.value === "future") return vacation.startDate > today;
+    if (
+      normalizedPersonFilter &&
+      !vacation.person
+        .toLocaleLowerCase("es-ES")
+        .includes(normalizedPersonFilter)
+    )
+      return false;
+    if (
+      vacationMonthFilter.value &&
+      !(
+        vacation.startDate.slice(0, 7) <= vacationMonthFilter.value &&
+        vacation.endDate.slice(0, 7) >= vacationMonthFilter.value
+      )
+    )
+      return false;
+    if (vacationStatusFilter.value === "active")
+      return vacation.startDate <= today && vacation.endDate >= today;
+    if (vacationStatusFilter.value === "future")
+      return vacation.startDate > today;
     if (vacationStatusFilter.value === "past") return vacation.endDate < today;
     return true;
   });
 
   return [...filtered].sort((left, right) => {
-    if (vacationSort.value === "start-desc") return right.startDate.localeCompare(left.startDate);
+    if (vacationSort.value === "start-desc")
+      return right.startDate.localeCompare(left.startDate);
     if (vacationSort.value === "person-asc") {
-      const personComparison = left.person.localeCompare(right.person, "es", { sensitivity: "base" });
-      return personComparison !== 0 ? personComparison : left.startDate.localeCompare(right.startDate);
+      const personComparison = left.person.localeCompare(right.person, "es", {
+        sensitivity: "base",
+      });
+      return personComparison !== 0
+        ? personComparison
+        : left.startDate.localeCompare(right.startDate);
     }
     return left.startDate.localeCompare(right.startDate);
   });
@@ -436,6 +604,13 @@ async function refreshSharedData() {
   allDays.value = days;
   vacations.value = loadedVacations;
   plannerSettings.value = settings;
+}
+
+function cloneDayRecord(record: DayRecord): DayRecord {
+  return {
+    ...record,
+    entries: record.entries.map((entry) => ({ ...entry })),
+  };
 }
 
 function openImportDialog() {
@@ -500,12 +675,21 @@ async function handleImportFileSelection(event: Event) {
   importFileName.value = file.name;
 
   try {
-    const workbook = xlsxModule.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+    const workbook = xlsxModule.read(await file.arrayBuffer(), {
+      type: "array",
+      cellDates: true,
+    });
     const firstSheetName = workbook.SheetNames[0];
-    const firstSheet = firstSheetName ? workbook.Sheets[firstSheetName] : undefined;
+    const firstSheet = firstSheetName
+      ? workbook.Sheets[firstSheetName]
+      : undefined;
     if (!firstSheet) throw new Error("El Excel no contiene ninguna hoja.");
 
-    const sheetRows = xlsxModule.utils.sheet_to_json<unknown[]>(firstSheet, { header: 1, raw: true, defval: "" });
+    const sheetRows = xlsxModule.utils.sheet_to_json<unknown[]>(firstSheet, {
+      header: 1,
+      raw: true,
+      defval: "",
+    });
     const [rawHeaders, ...rawDataRows] = sheetRows;
     if (!Array.isArray(rawHeaders) || rawHeaders.length === 0) {
       throw new Error("La primera fila del Excel debe contener las cabeceras.");
@@ -517,13 +701,29 @@ async function handleImportFileSelection(event: Event) {
       if (normalizedHeader) headerIndex.set(normalizedHeader, index);
     });
 
-    const requiredHeaders = ["fecha", "fechadecampo", "referencia", "localidad", "observaciones"];
-    const missingHeaders = requiredHeaders.filter((header) => !headerIndex.has(header));
+    const requiredHeaders = [
+      "laborante",
+      "fmuestreo",
+      "noobra",
+      "obra",
+      "material",
+      "poblacion",
+      "descripcion",
+      "planos",
+    ];
+    const missingHeaders = requiredHeaders.filter(
+      (header) => !headerIndex.has(header),
+    );
     if (missingHeaders.length > 0) {
-      throw new Error(`Faltan columnas obligatorias: ${missingHeaders.join(", ")}.`);
+      throw new Error(
+        `Faltan columnas obligatorias: ${missingHeaders.join(", ")}.`,
+      );
     }
 
-    const existingReferenceMap = new Map<string, { dateKey: string; reference: string }>();
+    const existingReferenceMap = new Map<
+      string,
+      { dateKey: string; reference: string }
+    >();
     Object.values(allDays.value).forEach((record) => {
       record.entries.forEach((entry) => {
         const normalizedReference = normalizePlannerReference(entry.referencia);
@@ -538,21 +738,49 @@ async function handleImportFileSelection(event: Event) {
     const importedReferenceMap = new Map<string, number>();
     const previewRows: ImportPreviewRow[] = rawDataRows
       .map((row, index) => ({ row, rowNumber: index + 2 }))
-      .filter(({ row }) => Array.isArray(row) ? row.some((cell) => String(cell ?? "").trim().length > 0) : false)
+      .filter(({ row }) =>
+        Array.isArray(row)
+          ? row.some((cell) => String(cell ?? "").trim().length > 0)
+          : false,
+      )
       .map(({ row, rowNumber }) => {
-        const rawSourceDate = Array.isArray(row) ? row[headerIndex.get("fecha") ?? -1] : "";
-        const rawFechaCampo = Array.isArray(row) ? row[headerIndex.get("fechadecampo") ?? -1] : "";
-        const rawReference = Array.isArray(row) ? row[headerIndex.get("referencia") ?? -1] : "";
-        const rawLocality = Array.isArray(row) ? row[headerIndex.get("localidad") ?? -1] : "";
-        const rawObservations = Array.isArray(row) ? row[headerIndex.get("observaciones") ?? -1] : "";
-        const sourceDate = parseImportDateValue(rawSourceDate);
-        const targetDate = addMonthsClamped(sourceDate, 1);
+        const rawLaborante = Array.isArray(row)
+          ? row[headerIndex.get("laborante") ?? -1]
+          : "";
+        const rawFechaCampo = Array.isArray(row)
+          ? row[headerIndex.get("fmuestreo") ?? -1]
+          : "";
+        const rawReference = Array.isArray(row)
+          ? row[headerIndex.get("noobra") ?? -1]
+          : "";
+        const rawWork = Array.isArray(row)
+          ? row[headerIndex.get("obra") ?? -1]
+          : "";
+        const rawMaterial = Array.isArray(row)
+          ? row[headerIndex.get("material") ?? -1]
+          : "";
+        const rawLocality = Array.isArray(row)
+          ? row[headerIndex.get("poblacion") ?? -1]
+          : "";
+        const rawDescription = Array.isArray(row)
+          ? row[headerIndex.get("descripcion") ?? -1]
+          : "";
+        const rawPlanos = Array.isArray(row)
+          ? row[headerIndex.get("planos") ?? -1]
+          : "";
+        const sourceDate = parseImportDateValue(rawFechaCampo);
+        const targetDate = addWeeks(sourceDate, 5);
         const fechaCampo = parseImportDateValue(rawFechaCampo);
+        const laborante = getImportedFirstName(rawLaborante);
         const referencia = String(rawReference ?? "").trim();
         const normalizedReference = normalizePlannerReference(referencia);
         const localityResolution = resolveImportedLocality(rawLocality);
         let localidad = localityResolution.locality;
-        let observaciones = String(rawObservations ?? "").trim();
+        let observaciones = [rawMaterial, rawWork, rawDescription]
+          .map((value) => String(value ?? "").trim())
+          .filter(Boolean)
+          .join("\n");
+        const plano = normalizeImportedPlano(rawPlanos);
         const errors: string[] = [];
         const blockingErrors: string[] = [];
         const warnings: string[] = [];
@@ -579,13 +807,15 @@ async function handleImportFileSelection(event: Event) {
         }
 
         if (normalizedReference) {
-          const existingReference = existingReferenceMap.get(normalizedReference);
+          const existingReference =
+            existingReferenceMap.get(normalizedReference);
           if (existingReference) {
             const message = `La referencia ya existe el día ${existingReference.dateKey}.`;
             errors.push(message);
             blockingErrors.push(message);
           }
-          const importedRowNumber = importedReferenceMap.get(normalizedReference);
+          const importedRowNumber =
+            importedReferenceMap.get(normalizedReference);
           if (typeof importedRowNumber === "number") {
             const message = `La referencia ya aparece en la fila ${importedRowNumber}.`;
             errors.push(message);
@@ -599,9 +829,13 @@ async function handleImportFileSelection(event: Event) {
           const localityError = `${localityResolution.error}.`;
           errors.push(localityError);
           localidad = "";
-          observaciones = [observaciones, localityError].filter((value) => value.trim().length > 0).join(" | ");
+          observaciones = [observaciones, localityError]
+            .filter((value) => value.trim().length > 0)
+            .join(" | ");
         } else if (localityResolution.wasCorrected) {
-          warnings.push(`Localidad corregida automaticamente: ${localityResolution.originalValue} -> ${localidad}.`);
+          warnings.push(
+            `Localidad corregida automaticamente: ${localityResolution.originalValue} -> ${localidad}.`,
+          );
         }
 
         return {
@@ -609,6 +843,8 @@ async function handleImportFileSelection(event: Event) {
           sourceDate,
           targetDate,
           fechaCampo,
+          laborante,
+          plano,
           referencia,
           localidad,
           observaciones,
@@ -618,26 +854,69 @@ async function handleImportFileSelection(event: Event) {
         };
       });
 
-    if (previewRows.length === 0) throw new Error("El Excel no contiene filas con datos.");
+    if (previewRows.length === 0)
+      throw new Error("El Excel no contiene filas con datos.");
     importRows.value = previewRows;
     importSummary.value = `${previewRows.filter((row) => row.status === "ready").length} filas listas y ${previewRows.filter((row) => row.status === "error").length} con error.`;
   } catch (error) {
-    importError.value = error instanceof Error ? error.message : "No se pudo leer el archivo seleccionado.";
+    importError.value =
+      error instanceof Error
+        ? error.message
+        : "No se pudo leer el archivo seleccionado.";
   } finally {
     importBusy.value = false;
   }
 }
 
 async function confirmExcelImport() {
-  if (!canEditReports.value || importBusy.value || readyImportRows.value.length === 0) return;
+  if (
+    !canEditReports.value ||
+    importBusy.value ||
+    readyImportRows.value.length === 0
+  )
+    return;
   importBusy.value = true;
   importError.value = "";
 
   try {
+    const existingLaborantes = new Set(
+      plannerSettings.value.asignadoOptions.map((option) =>
+        option.trim().toLocaleLowerCase("es-ES"),
+      ),
+    );
+    const newLaborantes = readyImportRows.value
+      .map((row) => row.laborante)
+      .filter((laborante) => {
+        const normalizedLaborante = laborante.toLocaleLowerCase("es-ES");
+        if (!normalizedLaborante || existingLaborantes.has(normalizedLaborante))
+          return false;
+        existingLaborantes.add(normalizedLaborante);
+        return true;
+      });
+
+    if (newLaborantes.length > 0) {
+      await saveSettings({
+        ...plannerSettings.value,
+        asignadoOptions: [
+          ...plannerSettings.value.asignadoOptions,
+          ...newLaborantes,
+        ],
+      });
+      const settings = await loadSettings();
+      plannerSettings.value = settings;
+      dispatchPlannerSettingsUpdated(settings);
+    }
+
     const recordsToSave = new Map<string, DayRecord>();
     for (const row of readyImportRows.value) {
-      const existingRecord = recordsToSave.get(row.targetDate) ?? structuredClone(allDays.value[row.targetDate] ?? createEmptyDay(row.targetDate));
+      const existingRecord =
+        recordsToSave.get(row.targetDate) ??
+        cloneDayRecord(
+          allDays.value[row.targetDate] ?? createEmptyDay(row.targetDate),
+        );
       const nextEntry = createEmptyEntry();
+      nextEntry.laborante = row.laborante;
+      nextEntry.plano = row.plano;
       nextEntry.referencia = row.referencia;
       nextEntry.localidad = row.localidad;
       nextEntry.fechaCampo = row.fechaCampo;
@@ -652,7 +931,9 @@ async function confirmExcelImport() {
 
     await refreshSharedData();
     dispatchPlannerDataUpdated();
-    window.alert(`Se han importado ${readyImportRows.value.length} informes desde ${importFileName.value}.`);
+    window.alert(
+      `Se han importado ${readyImportRows.value.length} informes desde ${importFileName.value}.`,
+    );
     closeImportDialog();
   } catch (error) {
     importError.value =
@@ -673,7 +954,8 @@ async function submitVacation() {
   const startDate = vacationDraft.value.startDate.trim();
   const endDate = vacationDraft.value.endDate.trim();
   if (!normalizedPerson) {
-    vacationError.value = "Selecciona una persona para registrar las vacaciones.";
+    vacationError.value =
+      "Selecciona una persona para registrar las vacaciones.";
     return;
   }
   if (!absenceType) {
@@ -685,14 +967,21 @@ async function submitVacation() {
     return;
   }
   if (startDate > endDate) {
-    vacationError.value = "La fecha de inicio no puede ser posterior a la final.";
+    vacationError.value =
+      "La fecha de inicio no puede ser posterior a la final.";
     return;
   }
 
   vacationBusy.value = true;
   vacationError.value = "";
   try {
-    await saveVacation({ ...vacationDraft.value, person: normalizedPerson, absenceType, startDate, endDate });
+    await saveVacation({
+      ...vacationDraft.value,
+      person: normalizedPerson,
+      absenceType,
+      startDate,
+      endDate,
+    });
     await refreshSharedData();
     dispatchPlannerDataUpdated();
     vacationMonthFilter.value = "";
@@ -700,7 +989,10 @@ async function submitVacation() {
     vacationSort.value = "start-desc";
     resetVacationDraft();
   } catch (error) {
-    vacationError.value = error instanceof Error ? error.message : "No se pudieron guardar las vacaciones.";
+    vacationError.value =
+      error instanceof Error
+        ? error.message
+        : "No se pudieron guardar las vacaciones.";
   } finally {
     vacationBusy.value = false;
   }
@@ -708,7 +1000,9 @@ async function submitVacation() {
 
 async function removeVacationRecord(vacationId: string) {
   if (!canEditReports.value || vacationBusy.value) return;
-  const confirmed = window.confirm("Se eliminará este periodo de ausencia. ¿Quieres continuar?");
+  const confirmed = window.confirm(
+    "Se eliminará este periodo de ausencia. ¿Quieres continuar?",
+  );
   if (!confirmed) return;
   vacationBusy.value = true;
   vacationError.value = "";
@@ -717,20 +1011,35 @@ async function removeVacationRecord(vacationId: string) {
     await refreshSharedData();
     dispatchPlannerDataUpdated();
   } catch (error) {
-    vacationError.value = error instanceof Error ? error.message : "No se pudieron eliminar las vacaciones.";
+    vacationError.value =
+      error instanceof Error
+        ? error.message
+        : "No se pudieron eliminar las vacaciones.";
   } finally {
     vacationBusy.value = false;
   }
 }
 
 onMounted(() => {
-  window.addEventListener(PLANNER_OPEN_IMPORT_DIALOG_EVENT, handleOpenImportDialog);
-  window.addEventListener(PLANNER_OPEN_VACATIONS_DIALOG_EVENT, handleOpenVacationsDialog);
+  window.addEventListener(
+    PLANNER_OPEN_IMPORT_DIALOG_EVENT,
+    handleOpenImportDialog,
+  );
+  window.addEventListener(
+    PLANNER_OPEN_VACATIONS_DIALOG_EVENT,
+    handleOpenVacationsDialog,
+  );
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener(PLANNER_OPEN_IMPORT_DIALOG_EVENT, handleOpenImportDialog);
-  window.removeEventListener(PLANNER_OPEN_VACATIONS_DIALOG_EVENT, handleOpenVacationsDialog);
+  window.removeEventListener(
+    PLANNER_OPEN_IMPORT_DIALOG_EVENT,
+    handleOpenImportDialog,
+  );
+  window.removeEventListener(
+    PLANNER_OPEN_VACATIONS_DIALOG_EVENT,
+    handleOpenVacationsDialog,
+  );
 });
 </script>
 
@@ -748,19 +1057,37 @@ onBeforeUnmount(() => {
     >
       <div class="confirm-dialog__header">
         <h2 id="vacation-dialog-title">Gestionar ausencias</h2>
-        <button class="confirm-dialog__close" type="button" aria-label="Cerrar" @click="closeVacationsDialog">X</button>
+        <button
+          class="confirm-dialog__close"
+          type="button"
+          aria-label="Cerrar"
+          @click="closeVacationsDialog"
+        >
+          X
+        </button>
       </div>
       <p class="pedido-editor__copy">
-        Registra vacaciones o ausencias por persona y rango de fechas. Sólo está disponible para usuarios con permiso de edición.
+        Registra vacaciones o ausencias por persona y rango de fechas. Sólo está
+        disponible para usuarios con permiso de edición.
       </p>
 
       <div class="vacation-manager">
         <section class="vacation-panel">
           <div class="vacation-panel__header">
             <div>
-              <h4>{{ isEditingVacation ? "Editar ausencia" : "Registrar nueva ausencia" }}</h4>
+              <h4>
+                {{
+                  isEditingVacation
+                    ? "Editar ausencia"
+                    : "Registrar nueva ausencia"
+                }}
+              </h4>
               <p class="vacation-panel__copy">
-                {{ isEditingVacation ? "Actualiza el periodo seleccionado." : "Añade un nuevo periodo de ausencia." }}
+                {{
+                  isEditingVacation
+                    ? "Actualiza el periodo seleccionado."
+                    : "Añade un nuevo periodo de ausencia."
+                }}
               </p>
             </div>
           </div>
@@ -770,7 +1097,11 @@ onBeforeUnmount(() => {
               <span class="field-label">Persona:</span>
               <select v-model="vacationDraft.person" :disabled="vacationBusy">
                 <option value="">Selecciona una persona</option>
-                <option v-for="personOption in asignadoOptions" :key="personOption" :value="personOption">
+                <option
+                  v-for="personOption in asignadoOptions"
+                  :key="personOption"
+                  :value="personOption"
+                >
                   {{ personOption }}
                 </option>
               </select>
@@ -778,19 +1109,37 @@ onBeforeUnmount(() => {
 
             <label class="field">
               <span class="field-label">Desde:</span>
-              <input v-model="vacationDraft.startDate" :disabled="vacationBusy" type="date" />
+              <input
+                v-model="vacationDraft.startDate"
+                :disabled="vacationBusy"
+                type="date"
+              />
             </label>
 
             <label class="field">
               <span class="field-label">Hasta:</span>
-              <input v-model="vacationDraft.endDate" :disabled="vacationBusy" type="date" />
+              <input
+                v-model="vacationDraft.endDate"
+                :disabled="vacationBusy"
+                type="date"
+              />
             </label>
 
             <fieldset class="absence-type-field" :disabled="vacationBusy">
               <legend class="field-label">Tipo de ausencia:</legend>
               <div class="absence-type-options">
-                <label v-for="absenceType in ABSENCE_TYPES" :key="absenceType" class="absence-type-option">
-                  <input v-model="vacationDraft.absenceType" type="radio" name="absence-type-global" :value="absenceType" required />
+                <label
+                  v-for="absenceType in ABSENCE_TYPES"
+                  :key="absenceType"
+                  class="absence-type-option"
+                >
+                  <input
+                    v-model="vacationDraft.absenceType"
+                    type="radio"
+                    name="absence-type-global"
+                    :value="absenceType"
+                    required
+                  />
                   <span>{{ absenceType }}</span>
                 </label>
               </div>
@@ -798,15 +1147,35 @@ onBeforeUnmount(() => {
 
             <label class="field field--notes vacation-form__notes">
               <span class="field-label">Notas:</span>
-              <textarea v-model="vacationDraft.notes" :disabled="vacationBusy" rows="2" placeholder="Opcional: verano, puente, media jornada..." />
+              <textarea
+                v-model="vacationDraft.notes"
+                :disabled="vacationBusy"
+                rows="2"
+                placeholder="Opcional: verano, puente, media jornada..."
+              />
             </label>
 
             <div class="vacation-form__actions">
-              <button class="ghost-button" type="button" :disabled="vacationBusy" @click="resetVacationDraft">
+              <button
+                class="ghost-button"
+                type="button"
+                :disabled="vacationBusy"
+                @click="resetVacationDraft"
+              >
                 {{ isEditingVacation ? "Cancelar edición" : "Limpiar" }}
               </button>
-              <button class="primary-button" type="submit" :disabled="vacationBusy">
-                {{ vacationBusy ? "Guardando..." : isEditingVacation ? "Guardar cambios" : "Guardar ausencia" }}
+              <button
+                class="primary-button"
+                type="submit"
+                :disabled="vacationBusy"
+              >
+                {{
+                  vacationBusy
+                    ? "Guardando..."
+                    : isEditingVacation
+                      ? "Guardar cambios"
+                      : "Guardar ausencia"
+                }}
               </button>
             </div>
           </form>
@@ -816,7 +1185,9 @@ onBeforeUnmount(() => {
           <div class="vacation-panel__header">
             <div>
               <h4>Listado global</h4>
-              <p class="vacation-panel__copy">Consulta, filtra y edita todas las ausencias registradas.</p>
+              <p class="vacation-panel__copy">
+                Consulta, filtra y edita todas las ausencias registradas.
+              </p>
             </div>
           </div>
 
@@ -825,7 +1196,11 @@ onBeforeUnmount(() => {
               <span class="field-label">Persona:</span>
               <select v-model="vacationPersonFilter">
                 <option value="">Todas las personas</option>
-                <option v-for="personOption in vacationPersonFilterOptions" :key="personOption" :value="personOption">
+                <option
+                  v-for="personOption in vacationPersonFilterOptions"
+                  :key="personOption"
+                  :value="personOption"
+                >
                   {{ personOption }}
                 </option>
               </select>
@@ -854,26 +1229,60 @@ onBeforeUnmount(() => {
           </div>
 
           <div v-if="filteredVacations.length" class="vacation-table">
-            <article v-for="vacation in filteredVacations" :key="vacation.id" class="vacation-table__row">
+            <article
+              v-for="vacation in filteredVacations"
+              :key="vacation.id"
+              class="vacation-table__row"
+            >
               <div class="vacation-table__main">
                 <strong>{{ vacation.person }}</strong>
-                <span>{{ vacation.absenceType || "Tipo sin especificar" }}</span>
-                <span>{{ formatShortDate(vacation.startDate) }} - {{ formatShortDate(vacation.endDate) }}</span>
+                <span>{{
+                  vacation.absenceType || "Tipo sin especificar"
+                }}</span>
+                <span
+                  >{{ formatShortDate(vacation.startDate) }} -
+                  {{ formatShortDate(vacation.endDate) }}</span
+                >
                 <span v-if="vacation.notes">{{ vacation.notes }}</span>
               </div>
               <div class="vacation-table__actions">
-                <button class="ghost-button" type="button" :disabled="vacationBusy" @click="startVacationEdit(vacation)">Editar</button>
-                <button class="inline-remove" type="button" :disabled="vacationBusy" @click="removeVacationRecord(vacation.id)">Eliminar</button>
+                <button
+                  class="ghost-button"
+                  type="button"
+                  :disabled="vacationBusy"
+                  @click="startVacationEdit(vacation)"
+                >
+                  Editar
+                </button>
+                <button
+                  class="inline-remove"
+                  type="button"
+                  :disabled="vacationBusy"
+                  @click="removeVacationRecord(vacation.id)"
+                >
+                  Eliminar
+                </button>
               </div>
             </article>
           </div>
-          <p v-else class="vacation-panel__copy">No hay ausencias que coincidan con los filtros.</p>
-          <p v-if="vacationError" class="pedido-editor__error">{{ vacationError }}</p>
+          <p v-else class="vacation-panel__copy">
+            No hay ausencias que coincidan con los filtros.
+          </p>
+          <p v-if="vacationError" class="pedido-editor__error">
+            {{ vacationError }}
+          </p>
         </section>
       </div>
 
       <div class="confirm-dialog__actions">
-        <button class="ghost-button" type="button" :disabled="vacationBusy" @click="closeVacationsDialog">Cerrar</button>
+        <button
+          class="ghost-button"
+          type="button"
+          :disabled="vacationBusy"
+          @click="closeVacationsDialog"
+        >
+          Cerrar
+        </button>
       </div>
     </section>
   </div>
@@ -891,20 +1300,40 @@ onBeforeUnmount(() => {
     >
       <div class="confirm-dialog__header">
         <h2 id="import-dialog-title">Importar informes desde Excel</h2>
-        <button class="confirm-dialog__close" type="button" aria-label="Cerrar" @click="closeImportDialog">X</button>
+        <button
+          class="confirm-dialog__close"
+          type="button"
+          aria-label="Cerrar"
+          @click="closeImportDialog"
+        >
+          X
+        </button>
       </div>
       <p class="pedido-editor__copy">
-        La plantilla debe incluir las columnas <strong>fecha</strong>, <strong>fecha de campo</strong>, <strong>referencia</strong>,
-        <strong>localidad</strong> y <strong>observaciones</strong>. La fecha de registro se calculara sumando un mes.
+        La plantilla debe incluir las columnas <strong>Laborante</strong>,
+        <strong>F.Muestreo</strong>, <strong>NºObra</strong>,
+        <strong>Obra</strong>, <strong>Material</strong>,
+        <strong>Población</strong>, <strong>Descripción</strong> y
+        <strong>Planos</strong>.<br />La fecha de registro se calculará sumando
+        cinco semanas a la fecha de muestreo.
       </p>
 
       <label class="field">
         <span class="field-label">Archivo Excel:</span>
-        <input :disabled="importBusy" accept=".xlsx,.xls" type="file" @change="handleImportFileSelection" />
+        <input
+          :disabled="importBusy"
+          accept=".xlsx,.xls"
+          type="file"
+          @change="handleImportFileSelection"
+        />
       </label>
 
-      <p v-if="importFileName" class="import-dialog__meta">Archivo seleccionado: {{ importFileName }}</p>
-      <p v-if="importSummary" class="import-dialog__meta">{{ importSummary }}</p>
+      <p v-if="importFileName" class="import-dialog__meta">
+        Archivo seleccionado: {{ importFileName }}
+      </p>
+      <p v-if="importSummary" class="import-dialog__meta">
+        {{ importSummary }}
+      </p>
       <p v-if="importError" class="pedido-editor__error">{{ importError }}</p>
 
       <div v-if="importRows.length" class="import-preview">
@@ -913,33 +1342,97 @@ onBeforeUnmount(() => {
           <span>{{ readyImportRows.length }} listas para importar</span>
         </div>
         <div class="import-preview__list">
-          <article v-for="row in importRows" :key="row.rowNumber" class="import-preview__row" :class="{ 'is-error': row.status === 'error', 'is-ready': row.status === 'ready' }">
+          <article
+            v-for="row in importRows"
+            :key="row.rowNumber"
+            class="import-preview__row"
+            :class="{
+              'is-error': row.status === 'error',
+              'is-ready': row.status === 'ready',
+            }"
+          >
             <div class="import-preview__row-top">
               <strong>Fila {{ row.rowNumber }}</strong>
               <span>{{ row.status === "ready" ? "Lista" : "Revisar" }}</span>
             </div>
             <div class="import-preview__grid">
-              <div><span>Fecha origen</span><strong>{{ row.sourceDate || "Sin fecha" }}</strong></div>
-              <div><span>Fecha registro</span><strong>{{ row.targetDate || "Sin calcular" }}</strong></div>
-              <div><span>Fecha de campo</span><strong>{{ row.fechaCampo || "Sin fecha" }}</strong></div>
-              <div><span>Referencia</span><strong>{{ row.referencia || "Sin referencia" }}</strong></div>
-              <div><span>Localidad</span><strong>{{ row.localidad || "Sin localidad" }}</strong></div>
+              <div>
+                <span>Fecha registro</span
+                ><strong>{{ row.targetDate || "Sin calcular" }}</strong>
+              </div>
+              <div>
+                <span>Fecha de campo</span
+                ><strong>{{ row.fechaCampo || "Sin fecha" }}</strong>
+              </div>
+              <div>
+                <span>Laborante</span
+                ><strong>{{ row.laborante || "Sin laborante" }}</strong>
+              </div>
+              <div>
+                <span>Referencia</span
+                ><strong>{{ row.referencia || "Sin referencia" }}</strong>
+              </div>
+              <div>
+                <span>Planos</span
+                ><strong>{{
+                  row.plano === "si"
+                    ? "Sí"
+                    : row.plano === "no"
+                      ? "No"
+                      : "Sin indicar"
+                }}</strong>
+              </div>
+              <div>
+                <span>Localidad</span
+                ><strong>{{ row.localidad || "Sin localidad" }}</strong>
+              </div>
+            </div>
+            <div class="import-preview__observaciones">
+              <span>Observaciones</span>
+              <p>{{ row.observaciones || "Sin observaciones" }}</p>
             </div>
             <ul v-if="row.errors.length" class="import-preview__errors">
-              <li v-for="errorItem in row.errors" :key="errorItem">{{ errorItem }}</li>
+              <li v-for="errorItem in row.errors" :key="errorItem">
+                {{ errorItem }}
+              </li>
             </ul>
             <ul v-if="row.warnings.length" class="import-preview__warnings">
-              <li v-for="warningItem in row.warnings" :key="warningItem">{{ warningItem }}</li>
+              <li v-for="warningItem in row.warnings" :key="warningItem">
+                {{ warningItem }}
+              </li>
             </ul>
           </article>
         </div>
       </div>
 
       <div class="confirm-dialog__actions">
-        <button class="ghost-button" type="button" :disabled="importBusy" @click="downloadImportTemplate">Descargar plantilla</button>
-        <button class="ghost-button" type="button" :disabled="importBusy" @click="closeImportDialog">Cancelar</button>
-        <button class="primary-button" type="button" :disabled="importBusy || readyImportRows.length === 0" @click="confirmExcelImport">
-          {{ importBusy ? "Importando..." : `Importar ${readyImportRows.length} informes` }}
+        <button
+          class="ghost-button"
+          type="button"
+          :disabled="importBusy"
+          @click="downloadImportTemplate"
+        >
+          Descargar plantilla
+        </button>
+        <button
+          class="ghost-button"
+          type="button"
+          :disabled="importBusy"
+          @click="closeImportDialog"
+        >
+          Cancelar
+        </button>
+        <button
+          class="primary-button"
+          type="button"
+          :disabled="importBusy || readyImportRows.length === 0"
+          @click="confirmExcelImport"
+        >
+          {{
+            importBusy
+              ? "Importando..."
+              : `Importar ${readyImportRows.length} informes`
+          }}
         </button>
       </div>
     </section>
@@ -966,29 +1459,74 @@ onBeforeUnmount(() => {
   background: rgba(248, 250, 252, 0.9);
 }
 
-.vacation-panel__header h4 { margin: 0; }
-.vacation-panel__copy { margin: 0.35rem 0 0; color: #475569; }
+.vacation-panel__header h4 {
+  margin: 0;
+}
+.vacation-panel__copy {
+  margin: 0.35rem 0 0;
+  color: #475569;
+}
 .vacation-form {
   display: grid;
   gap: 0.85rem;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
-.vacation-form__notes { grid-column: 1 / -1; }
-.absence-type-field { grid-column: 1 / -1; margin: 0; padding: 0; border: 0; }
-.absence-type-options { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.55rem; }
-.absence-type-option { display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; }
-.vacation-form__actions { display: flex; align-items: center; gap: 0.75rem; grid-column: 1 / -1; }
+.vacation-form__notes {
+  grid-column: 1 / -1;
+}
+.absence-type-field {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.absence-type-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.55rem;
+}
+.absence-type-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+}
+.vacation-form__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  grid-column: 1 / -1;
+}
 .vacation-filters {
   display: grid;
   gap: 0.85rem;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
-.vacation-table { display: grid; gap: 0.85rem; }
-.vacation-table__row {
-  display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;
-  padding: 1rem; border: 1px solid rgba(148, 163, 184, 0.24); border-radius: 1rem; background: rgba(255,255,255,0.72);
+.vacation-table {
+  display: grid;
+  gap: 0.85rem;
 }
-.vacation-table__main { display: grid; gap: 0.3rem; }
-.vacation-table__main span { color: #475569; }
-.vacation-table__actions { display: flex; align-items: center; gap: 0.65rem; }
+.vacation-table__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.72);
+}
+.vacation-table__main {
+  display: grid;
+  gap: 0.3rem;
+}
+.vacation-table__main span {
+  color: #475569;
+}
+.vacation-table__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
 </style>
