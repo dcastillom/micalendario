@@ -1,25 +1,7 @@
-<script setup lang="ts">
-import { computed, ref, watch } from "vue";
+<script lang="ts">
 import { SPANISH_LOCALITIES, SPANISH_PROVINCES } from "../lib/spanish-municipalities";
 
-const props = withDefaults(
-  defineProps<{
-    modelValue: string;
-    disabled?: boolean;
-  }>(),
-  {
-    disabled: false,
-  },
-);
-
-const emit = defineEmits<{
-  "update:modelValue": [value: string];
-}>();
-
 const MAX_RESULTS = 8;
-const inputValue = ref(props.modelValue);
-const isOpen = ref(false);
-const highlightedIndex = ref(-1);
 
 function normalize(value: string) {
   return value
@@ -42,6 +24,7 @@ const LOCALITIES = SPANISH_LOCALITIES.map((locality) => {
 });
 
 const LOCALITY_BY_NORMALIZED_NAME = new Map(LOCALITIES.map(({ normalizedLocality, locality }) => [normalizedLocality, locality]));
+const DEFAULT_RESULTS = [...SPANISH_PROVINCES, ...SPANISH_LOCALITIES.filter((locality) => !PROVINCES.has(locality))].slice(0, MAX_RESULTS);
 
 function getMatchPriority(
   query: string,
@@ -73,26 +56,42 @@ function getMatchPriority(
 
   return 5;
 }
+</script>
+
+<script setup lang="ts">
+import { computed, ref, watch } from "vue";
+
+const props = withDefaults(defineProps<{ modelValue: string; disabled?: boolean }>(), {
+  disabled: false,
+});
+const emit = defineEmits<{ "update:modelValue": [value: string] }>();
+const inputValue = ref(props.modelValue);
+const isOpen = ref(false);
+const highlightedIndex = ref(-1);
 
 const filteredLocalities = computed(() => {
+  if (!isOpen.value) return [];
   const query = normalize(inputValue.value);
 
   if (!query) {
-    return [...SPANISH_PROVINCES, ...SPANISH_LOCALITIES.filter((locality) => !PROVINCES.has(locality))].slice(0, MAX_RESULTS);
+    return DEFAULT_RESULTS;
   }
 
-  return LOCALITIES.filter(({ normalizedLocality }) => normalizedLocality.includes(query))
-    .sort((left, right) => {
-      const priorityDifference = getMatchPriority(query, left) - getMatchPriority(query, right);
+  const matches: { locality: string; priority: number }[] = [];
+  for (const item of LOCALITIES) {
+    if (!item.normalizedLocality.includes(query)) continue;
 
-      if (priorityDifference !== 0) {
-        return priorityDifference;
-      }
-
-      return left.locality.localeCompare(right.locality, "es", { sensitivity: "base" });
-    })
-    .slice(0, MAX_RESULTS)
-    .map(({ locality }) => locality);
+    const match = { locality: item.locality, priority: getMatchPriority(query, item) };
+    const index = matches.findIndex((other) =>
+      match.priority < other.priority ||
+      (match.priority === other.priority &&
+        match.locality.localeCompare(other.locality, "es", { sensitivity: "base" }) < 0),
+    );
+    if (index !== -1) matches.splice(index, 0, match);
+    else if (matches.length < MAX_RESULTS) matches.push(match);
+    if (matches.length > MAX_RESULTS) matches.pop();
+  }
+  return matches.map(({ locality }) => locality);
 });
 
 watch(

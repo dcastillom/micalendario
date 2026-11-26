@@ -77,6 +77,107 @@ button {
   padding: 0;
 }
 
+.floating-actions {
+  position: fixed;
+  right: max(20px, env(safe-area-inset-right));
+  bottom: max(20px, env(safe-area-inset-bottom));
+  z-index: 100;
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+}
+
+.floating-actions__panel {
+  width: min(290px, calc(100vw - 40px));
+  max-height: calc(100dvh - 110px);
+  overflow-y: auto;
+  padding: 14px;
+  border: 1px solid rgba(31, 107, 90, 0.13);
+  border-radius: 20px;
+  background: #fcfaf6;
+  box-shadow: 0 12px 36px rgba(27, 44, 36, 0.22);
+}
+
+.floating-actions__heading {
+  margin: 2px 9px 6px;
+  color: var(--accent-strong);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.floating-actions__heading--section:not(:first-child) {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(31, 107, 90, 0.16);
+}
+
+.floating-actions__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #20372f;
+  font: inherit;
+  font-size: 0.88rem;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.floating-actions__item > span {
+  display: inline-flex;
+  justify-content: center;
+  width: 22px;
+  color: var(--accent-strong);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.floating-actions__item > svg {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  color: var(--accent-strong);
+}
+
+.floating-actions__item:hover,
+.floating-actions__item.is-active {
+  background: rgba(31, 107, 90, 0.12);
+}
+
+.floating-actions__item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.floating-actions__toggle {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  border: 0;
+  border-radius: 50%;
+  background: #164d3d;
+  box-shadow: 0 7px 20px rgba(27, 44, 36, 0.28);
+  color: white;
+  font-size: 2rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.floating-actions__item:focus-visible,
+.floating-actions__toggle:focus-visible {
+  outline: 3px solid #76b59b;
+  outline-offset: 2px;
+}
+
 .app-shell-header__inner {
   display: grid;
   gap: 14px;
@@ -512,6 +613,7 @@ button {
 }
 
 .company-header__action-button--icon {
+  position: relative;
   display: inline-grid;
   place-items: center;
   flex: 0 0 auto;
@@ -519,6 +621,34 @@ button {
   min-width: 50px;
   min-height: 50px;
   padding: 0;
+}
+
+.company-header__action-button--icon::after {
+  content: attr(aria-label);
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  width: max-content;
+  max-width: min(220px, calc(100vw - 24px));
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: #20372f;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+}
+
+.company-header__action-button--icon:hover::after,
+.company-header__action-button--icon:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
 }
 
 .company-header__menu-toggle {
@@ -530,6 +660,23 @@ button {
   height: 24px;
   display: block;
   flex: 0 0 auto;
+}
+
+.company-header__text-icon {
+  display: inline-grid;
+  place-items: center;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.company-header__action-icon.company-header__text-icon {
+  width: 34px;
+  height: 34px;
+  font-size: 1.8rem;
+}
+
+.company-header__text-icon--users {
+  transform: scale(1.2);
 }
 
 .company-header__menu-dropdown {
@@ -1817,6 +1964,12 @@ button {
   border-color: rgba(31, 107, 90, 0.55);
 }
 
+.month-card.is-drop-target .month-card__button {
+  border-color: #247962;
+  background: #e2f1e9;
+  box-shadow: 0 0 0 3px rgba(31, 107, 90, 0.35);
+}
+
 .month-card__day {
   display: inline-flex;
   align-items: center;
@@ -1864,6 +2017,15 @@ button {
 
 .month-card__list li:hover {
   background: rgba(31, 107, 90, 0.15);
+}
+
+.month-card__list li[draggable="true"] {
+  cursor: grab;
+}
+
+.month-card__list li.is-dragging {
+  opacity: 0.45;
+  cursor: grabbing;
 }
 
 .month-card__list strong,
@@ -3149,4 +3311,237 @@ button {
     transition: none !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Compact application header and calendar controls. */
+.app-shell-header .company-header {
+  position: relative;
+  z-index: 2;
+  gap: 14px;
+  padding: 10px 20px;
+  background: linear-gradient(180deg, #fdfbf8, #f6eee3);
+  box-shadow: none;
+}
+
+.planner-app:has(.confirm-overlay),
+.reports-page:has(.confirm-overlay) {
+  z-index: 3;
+}
+
+.app-shell-header .company-header__logo {
+  width: 68px;
+  height: 68px;
+  padding: 7px;
+  border-radius: 16px;
+}
+
+.app-shell-header .company-header__logo + .company-header__body {
+  border-left: 1px solid rgba(31, 107, 90, 0.3);
+  padding-left: 14px;
+}
+
+.app-shell-header .company-header__name {
+  font-size: clamp(1.3rem, 2.1vw, 2rem);
+  line-height: 1.1;
+}
+
+.app-shell-header .company-header__subtitle {
+  font-size: clamp(0.8rem, 1vw, 1rem);
+}
+
+.agenda-toolbar {
+  position: sticky;
+  top: 12px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: min(100%, 1400px);
+  justify-self: center;
+  min-width: 0;
+  margin-bottom: 34px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 22px;
+  background: #fcfaf6;
+  box-shadow: 0 8px 26px rgba(42, 43, 34, 0.16);
+}
+
+.agenda-toolbar__date-label {
+  position: absolute;
+  top: 100%;
+  left: 12px;
+  max-width: calc(100% - 24px);
+  margin: 0;
+  padding: 7px 15px;
+  border: 1px solid rgba(32, 55, 47, 0.12);
+  border-radius: 999px;
+  background: #fcfaf6;
+  box-shadow: 0 4px 12px rgba(42, 43, 34, 0.15);
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.agenda-content-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 4px 4px 0;
+}
+
+.agenda-content-header__add { display: inline-flex; align-items: center; gap: 8px; }
+.agenda-content-header__add span { font-size: 1.5em; line-height: 1; }
+
+.agenda-toolbar__controls,
+.agenda-toolbar__navigation,
+.agenda-toolbar__views {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.agenda-toolbar__navigation { flex: 0 0 auto; }
+.agenda-toolbar__controls { flex: 0 0 auto; gap: 12px; }
+.agenda-toolbar__date { position: relative; margin-left: 6px; }
+
+.agenda-toolbar__icon-button,
+.agenda-toolbar__view {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid rgba(32, 55, 47, 0.16);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.62);
+  color: var(--accent-strong);
+  font: inherit;
+  cursor: pointer;
+}
+
+.agenda-toolbar__icon-button svg,
+.agenda-toolbar__view svg,
+.agenda-toolbar__search svg {
+  flex: 0 0 auto;
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.agenda-toolbar__icon-button:hover,
+.agenda-toolbar__view:hover,
+.agenda-toolbar__icon-button.is-today,
+.agenda-toolbar__view.is-active {
+  border-color: rgba(31, 107, 90, 0.26);
+  background: rgba(31, 107, 90, 0.13);
+}
+
+.agenda-toolbar__icon-button:disabled { opacity: 0.45; cursor: not-allowed; }
+.agenda-toolbar__icon-button:focus-visible,
+.agenda-toolbar__view:focus-visible,
+.agenda-toolbar__search input:focus-visible,
+.agenda-toolbar__date input:focus-visible {
+  outline: 3px solid #76b59b;
+  outline-offset: 2px;
+}
+
+.agenda-tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  width: max-content;
+  max-width: min(220px, calc(100vw - 24px));
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: #20372f;
+  color: white;
+  font-size: 0.75rem;
+  line-height: 1.25;
+  font-weight: 600;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+}
+.agenda-tooltip:hover::after, .agenda-tooltip:focus-visible::after { opacity: 1; visibility: visible; }
+.agenda-toolbar__navigation > .agenda-tooltip:first-child::after { left: 0; right: auto; }
+
+.agenda-toolbar__date input:not(.agenda-toolbar__native-date--picker) {
+  min-height: 44px;
+  max-width: 180px;
+  padding: 8px;
+  border: 1px solid rgba(32, 55, 47, 0.16);
+  border-radius: 12px;
+}
+.agenda-toolbar__date .agenda-toolbar__native-date--picker {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.agenda-toolbar__search {
+  display: flex;
+  align-items: center;
+  flex: 1 1 220px;
+  gap: 10px;
+  min-width: 160px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid rgba(32, 55, 47, 0.16);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+}
+.agenda-toolbar__search:focus-within { outline: 3px solid #76b59b; outline-offset: 2px; }
+.agenda-toolbar__search input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+}
+.agenda-toolbar__search input:focus-visible { outline: 0; }
+.agenda-toolbar__views { flex: 0 0 auto; gap: 6px; padding-left: 12px; border-left: 1px solid rgba(32, 55, 47, 0.2); }
+.agenda-toolbar__view { width: 44px; padding: 8px; }
+.agenda-toolbar__view.is-active { background: #1f6b5a; border-color: #1f6b5a; color: #fff; }
+@media (max-width: 900px) {
+  .agenda-toolbar__search { flex: 1 1 200px; }
+  .app-shell-header--reports .company-header__button-group { display: none; }
+  .app-shell-header--reports .company-header__menu-shell { display: block; }
+}
+
+@media (max-width: 600px) {
+  .app-shell-header .company-header { gap: 9px; padding: 9px 12px; }
+  .app-shell-header .company-header__logo { width: 48px; height: 48px; padding: 5px; border-radius: 12px; }
+  .app-shell-header .company-header__logo + .company-header__body { padding-left: 9px; }
+  .app-shell-header .company-header__name { font-size: clamp(1rem, 4vw, 1.3rem); }
+  .app-shell-header .company-header__subtitle { font-size: 0.75rem; }
+  .app-shell-header .company-header__body--with-actions { gap: 8px; align-items: center; }
+  .app-shell-header .company-header__action-button--icon { width: 44px; min-width: 44px; min-height: 44px; padding: 0; }
+  .agenda-toolbar { gap: 8px; padding: 12px; border-radius: 16px; }
+  .agenda-toolbar__search { flex-basis: 100%; }
+  .agenda-toolbar__controls { flex-wrap: wrap; }
 }

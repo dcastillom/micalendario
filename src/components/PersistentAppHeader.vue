@@ -22,6 +22,11 @@ import {
   dispatchPlannerOpenVacationsDialog,
   dispatchPlannerSettingsUpdated,
   PLANNER_SETTINGS_UPDATED_EVENT,
+  PLANNER_FLOATING_AGENDA_ACTION_EVENT,
+  PLANNER_FLOATING_AGENDA_STATE_EVENT,
+  PLANNER_FLOATING_AGENDA_STATE_REQUEST_EVENT,
+  type PlannerFloatingAgendaAction,
+  type PlannerFloatingAgendaState,
 } from "../lib/planner-ui-events";
 import type {
   PlannerRole,
@@ -30,6 +35,7 @@ import type {
 } from "../lib/planner-types";
 import AuthAccessCard from "./AuthAccessCard.vue";
 import CompanyHeader from "./CompanyHeader.vue";
+import AgendaIcon from "./AgendaIcon.vue";
 
 interface Props {
   initialPathname?: string;
@@ -39,6 +45,10 @@ const props = withDefaults(defineProps<Props>(), {
   initialPathname: "/",
 });
 const MAX_LOGO_FILE_SIZE_BYTES = 1024 * 1024;
+const actionIcons = {
+  auth: "⇥", users: "♙", people: "☷", brand: "▣",
+  vacations: "☑", import: "↓", filters: "☰",
+};
 
 function normalizePathname(pathname: string) {
   const withoutIndex = pathname.replace(/\/index\.html$/, "/");
@@ -52,6 +62,9 @@ const currentPathname = ref(normalizePathname(props.initialPathname));
 const headerUserProfile = ref<PlannerUserProfile | null>(null);
 const headerMenuRef = ref<HTMLElement | null>(null);
 const headerMenuOpen = ref(false);
+const floatingMenuOpen = ref(false);
+const floatingToggleRef = ref<HTMLButtonElement | null>(null);
+const floatingAgendaState = ref<PlannerFloatingAgendaState>({ viewMode: "month", ready: false });
 const loginDialogOpen = ref(false);
 const brandEditorOpen = ref(false);
 const asignadoEditorOpen = ref(false);
@@ -147,49 +160,9 @@ const contextualHeaderActionLabel = computed(() =>
   isReportsRoute.value ? "Volver a la agenda" : "Ir a filtros",
 );
 const closeIconPaths = ["M6 6 18 18", "M18 6 6 18"];
-const usersIconPaths = computed(() =>
-  usersEditorOpen.value
-    ? closeIconPaths
-    : [
-        "M15 19v-1.5A3.5 3.5 0 0 0 11.5 14H6.5A3.5 3.5 0 0 0 3 17.5V19",
-        "M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z",
-        "M18 8v6",
-        "M21 11h-6",
-      ],
-);
-const asignadoIconPaths = computed(() =>
-  asignadoEditorOpen.value
-    ? closeIconPaths
-    : [
-        "M10 6h10",
-        "M10 12h10",
-        "M10 18h10",
-        "M4 6.5 5.75 8.25 8 6",
-        "M4 12.5 5.75 14.25 8 12",
-        "M4 18.5 5.75 20.25 8 18",
-      ],
-);
-const brandIconPaths = computed(() =>
-  brandEditorOpen.value
-    ? closeIconPaths
-    : [
-        "M4 7.5A1.5 1.5 0 0 1 5.5 6h13A1.5 1.5 0 0 1 20 7.5v9A1.5 1.5 0 0 1 18.5 18h-13A1.5 1.5 0 0 1 4 16.5z",
-        "M4 10h16",
-        "M8 14h8",
-      ],
-);
 const headerMenuIconPaths = computed(() =>
   headerMenuOpen.value ? closeIconPaths : ["M4 7h16", "M4 12h16", "M4 17h16"],
 );
-const loginIconPaths = [
-  "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z",
-  "M5 20a7 7 0 0 1 14 0",
-];
-const logoutIconPaths = [
-  "M10 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19H10",
-  "M13 8l4 4-4 4",
-  "M17 12H9",
-];
 const authActionLabel = computed(() => {
   if (isAuthenticated.value) {
     return "Salir";
@@ -199,26 +172,6 @@ const authActionLabel = computed(() => {
     ? "Crear admin inicial"
     : "Iniciar sesión";
 });
-const authActionIconPaths = computed(() =>
-  isAuthenticated.value ? logoutIconPaths : loginIconPaths,
-);
-const contextualHeaderIconPaths = computed(() =>
-  isReportsRoute.value
-    ? ["M4 10.5 12 4l8 6.5v8.5a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"]
-    : [
-        "M7 8V4.5A1.5 1.5 0 0 1 8.5 3h7A1.5 1.5 0 0 1 17 4.5V8",
-        "M6.5 19H17.5A1.5 1.5 0 0 0 19 17.5V11a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6.5A1.5 1.5 0 0 0 6.5 19Z",
-        "M8 14.5h8v5H8zM16.5 11.5h.01",
-      ],
-);
-const importIconPaths = ["M12 4v10", "m8 10 4 4 4-4", "M5 19h14"];
-const vacationsIconPaths = [
-  "M8 3v3",
-  "M16 3v3",
-  "M4.5 8h15",
-  "M6 5h12A1.5 1.5 0 0 1 19.5 6.5v11A1.5 1.5 0 0 1 18 19H6A1.5 1.5 0 0 1 4.5 17.5v-11A1.5 1.5 0 0 1 6 5Z",
-  "m9 13 2 2 4-4",
-];
 const currentUserEmail = computed(() => headerUserProfile.value?.email ?? "");
 const currentUserRoleLabel = computed(() => {
   if (headerUserProfile.value?.role === "admin") {
@@ -407,6 +360,7 @@ function handlePlannerSettingsUpdated(event: Event) {
 
 function handleAstroAfterSwap() {
   syncCurrentPathname();
+  floatingAgendaState.value = { viewMode: "month", ready: false };
   closeHeaderMenu();
   closeLoginDialog();
   void refreshHeaderAuthState();
@@ -415,6 +369,7 @@ function handleAstroAfterSwap() {
 
 function handleAstroPageLoad() {
   syncCurrentPathname();
+  window.dispatchEvent(new Event(PLANNER_FLOATING_AGENDA_STATE_REQUEST_EVENT));
   closeHeaderMenu();
   void refreshHeaderAuthState();
   void refreshPlannerSettings();
@@ -440,6 +395,11 @@ function handleDocumentPointerDown(event: Event) {
 
 function handleWindowKeydown(event: KeyboardEvent) {
   if (event.key === "Escape") {
+    if (floatingMenuOpen.value) {
+      floatingMenuOpen.value = false;
+      floatingToggleRef.value?.focus();
+      return;
+    }
     if (removeUserDialog.value) {
       closeRemoveManagedUserDialog();
       return;
@@ -456,6 +416,18 @@ function handleWindowKeydown(event: KeyboardEvent) {
 
     closeHeaderMenu();
   }
+}
+
+function handleFloatingAgendaState(event: Event) {
+  if (event instanceof CustomEvent && event.detail) floatingAgendaState.value = event.detail as PlannerFloatingAgendaState;
+}
+
+function runFloatingAgendaAction(action: PlannerFloatingAgendaAction) {
+  window.dispatchEvent(new CustomEvent(PLANNER_FLOATING_AGENDA_ACTION_EVENT, { detail: action }));
+}
+
+function runFloatingAction(action: () => void) {
+  action();
 }
 
 function handlePlannerAuthUpdated() {
@@ -855,6 +827,8 @@ onMounted(() => {
   document.addEventListener("pointerdown", handleDocumentPointerDown);
   window.addEventListener("focus", handleWindowFocus);
   window.addEventListener("keydown", handleWindowKeydown);
+  window.addEventListener(PLANNER_FLOATING_AGENDA_STATE_EVENT, handleFloatingAgendaState);
+  window.dispatchEvent(new Event(PLANNER_FLOATING_AGENDA_STATE_REQUEST_EVENT));
   window.addEventListener(PLANNER_AUTH_UPDATED_EVENT, handlePlannerAuthUpdated);
   window.addEventListener(
     PLANNER_SETTINGS_UPDATED_EVENT,
@@ -899,6 +873,7 @@ onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", handleDocumentPointerDown);
   window.removeEventListener("focus", handleWindowFocus);
   window.removeEventListener("keydown", handleWindowKeydown);
+  window.removeEventListener(PLANNER_FLOATING_AGENDA_STATE_EVENT, handleFloatingAgendaState);
   window.removeEventListener(
     PLANNER_AUTH_UPDATED_EVENT,
     handlePlannerAuthUpdated,
@@ -912,6 +887,34 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="app-shell-header no-print" :class="headerClassName">
+    <div v-if="canRenderHeaderActions" class="floating-actions" @mouseleave="floatingMenuOpen = false">
+      <div v-if="floatingMenuOpen" id="floating-actions-panel" class="floating-actions__panel" aria-label="Acciones rápidas">
+        <template v-if="isAgendaRoute">
+          <p class="floating-actions__heading">Agenda</p>
+          <button v-if="canImportReports" type="button" class="floating-actions__item" :disabled="!floatingAgendaState.ready" @click="runFloatingAgendaAction('add')"><span aria-hidden="true">＋</span>Añadir informe</button>
+          <button type="button" class="floating-actions__item" :class="{ 'is-active': floatingAgendaState.viewMode === 'day' }" :disabled="!floatingAgendaState.ready" @click="runFloatingAgendaAction('day')"><AgendaIcon name="day" />Vista diaria</button>
+          <button type="button" class="floating-actions__item" :class="{ 'is-active': floatingAgendaState.viewMode === 'month' }" :disabled="!floatingAgendaState.ready" @click="runFloatingAgendaAction('month')"><AgendaIcon name="month" />Vista mensual</button>
+          <button type="button" class="floating-actions__item" :disabled="!floatingAgendaState.ready" @click="runFloatingAgendaAction('previous')"><AgendaIcon name="previous" />{{ floatingAgendaState.viewMode === 'day' ? 'Día anterior' : 'Mes anterior' }}</button>
+          <button type="button" class="floating-actions__item" :disabled="!floatingAgendaState.ready" @click="runFloatingAgendaAction('today')"><AgendaIcon name="today" />Hoy</button>
+          <button type="button" class="floating-actions__item" :disabled="!floatingAgendaState.ready" @click="runFloatingAgendaAction('next')"><AgendaIcon name="next" />{{ floatingAgendaState.viewMode === 'day' ? 'Día siguiente' : 'Mes siguiente' }}</button>
+        </template>
+        <template v-else-if="isReportsRoute && canImportReports">
+          <p class="floating-actions__heading">Agenda</p>
+          <a class="floating-actions__item" href="/?add=1"><span aria-hidden="true">＋</span>Añadir informe</a>
+        </template>
+        <p class="floating-actions__heading floating-actions__heading--section">Acciones</p>
+        <button v-if="canManageUsers" type="button" class="floating-actions__item" @click="runFloatingAction(handleUsersButtonClick)"><span aria-hidden="true">{{ actionIcons.users }}</span>{{ usersButtonLabel }}</button>
+        <button v-if="canEditBranding" type="button" class="floating-actions__item" @click="runFloatingAction(handleAsignadoButtonClick)"><span aria-hidden="true">{{ actionIcons.people }}</span>{{ asignadoButtonLabel }}</button>
+        <button v-if="canEditBranding" type="button" class="floating-actions__item" @click="runFloatingAction(handleBrandButtonClick)"><span aria-hidden="true">{{ actionIcons.brand }}</span>{{ brandButtonLabel }}</button>
+        <button v-if="canManageVacations" type="button" class="floating-actions__item" @click="runFloatingAction(handleVacationsClick)"><span aria-hidden="true">{{ actionIcons.vacations }}</span>Gestionar ausencias</button>
+        <button v-if="canImportReports" type="button" class="floating-actions__item" @click="runFloatingAction(handleImportReportsClick)"><span aria-hidden="true">{{ actionIcons.import }}</span>Importar Excel</button>
+        <a class="floating-actions__item" :href="contextualHeaderActionHref"><span aria-hidden="true">{{ actionIcons.filters }}</span>{{ contextualHeaderActionLabel }}</a>
+        <button v-if="canShowAuthAction" type="button" class="floating-actions__item" @click="runFloatingAction(handleAuthActionClick)"><span aria-hidden="true">{{ actionIcons.auth }}</span>{{ authActionLabel }}</button>
+      </div>
+      <button ref="floatingToggleRef" type="button" class="floating-actions__toggle" :aria-expanded="floatingMenuOpen" aria-controls="floating-actions-panel" :aria-label="floatingMenuOpen ? 'Cerrar acciones rápidas' : 'Abrir acciones rápidas'" @click="floatingMenuOpen = !floatingMenuOpen">
+        <span aria-hidden="true">{{ floatingMenuOpen ? '×' : '+' }}</span>
+      </button>
+    </div>
     <div class="app-shell-header__inner">
       <CompanyHeader
         :settings="displayedSettings"
@@ -938,25 +941,9 @@ onBeforeUnmount(() => {
                 }"
                 type="button"
                 :aria-label="authActionLabel"
-                :title="authActionLabel"
                 @click="handleAuthActionClick"
               >
-                <svg
-                  aria-hidden="true"
-                  class="company-header__action-icon"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    v-for="path in authActionIconPaths"
-                    :key="path"
-                    :d="path"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.9"
-                  />
-                </svg>
+                <span aria-hidden="true" class="company-header__action-icon company-header__text-icon">{{ actionIcons.auth }}</span>
               </button>
               <button
                 v-if="canManageUsers"
@@ -966,25 +953,9 @@ onBeforeUnmount(() => {
                 }"
                 type="button"
                 :aria-label="usersButtonLabel"
-                :title="usersButtonLabel"
                 @click="handleUsersButtonClick"
               >
-                <svg
-                  aria-hidden="true"
-                  class="company-header__action-icon"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    v-for="path in usersIconPaths"
-                    :key="path"
-                    :d="path"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.9"
-                  />
-                </svg>
+                <span aria-hidden="true" class="company-header__action-icon company-header__text-icon company-header__text-icon--users">{{ actionIcons.users }}</span>
               </button>
               <button
                 v-if="canEditBranding"
@@ -994,25 +965,9 @@ onBeforeUnmount(() => {
                 }"
                 type="button"
                 :aria-label="asignadoButtonLabel"
-                :title="asignadoButtonLabel"
                 @click="handleAsignadoButtonClick"
               >
-                <svg
-                  aria-hidden="true"
-                  class="company-header__action-icon"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    v-for="path in asignadoIconPaths"
-                    :key="path"
-                    :d="path"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.9"
-                  />
-                </svg>
+                <span aria-hidden="true" class="company-header__action-icon company-header__text-icon">{{ actionIcons.people }}</span>
               </button>
               <button
                 v-if="canEditBranding"
@@ -1022,98 +977,34 @@ onBeforeUnmount(() => {
                 }"
                 type="button"
                 :aria-label="brandButtonLabel"
-                :title="brandButtonLabel"
                 @click="handleBrandButtonClick"
               >
-                <svg
-                  aria-hidden="true"
-                  class="company-header__action-icon"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    v-for="path in brandIconPaths"
-                    :key="path"
-                    :d="path"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.9"
-                  />
-                </svg>
+                <span aria-hidden="true" class="company-header__action-icon company-header__text-icon">{{ actionIcons.brand }}</span>
               </button>
               <button
                 v-if="canManageVacations"
                 class="company-header__action-button company-header__action-button--icon"
                 type="button"
                 aria-label="Gestionar ausencias"
-                title="Gestionar ausencias"
                 @click="handleVacationsClick"
               >
-                <svg
-                  aria-hidden="true"
-                  class="company-header__action-icon"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    v-for="path in vacationsIconPaths"
-                    :key="path"
-                    :d="path"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.9"
-                  />
-                </svg>
+                <span aria-hidden="true" class="company-header__action-icon company-header__text-icon">{{ actionIcons.vacations }}</span>
               </button>
               <button
                 v-if="canImportReports"
                 class="company-header__action-button company-header__action-button--icon"
                 type="button"
                 aria-label="Importar Excel"
-                title="Importar Excel"
                 @click="handleImportReportsClick"
               >
-                <svg
-                  aria-hidden="true"
-                  class="company-header__action-icon"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    v-for="path in importIconPaths"
-                    :key="path"
-                    :d="path"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.9"
-                  />
-                </svg>
+                <span aria-hidden="true" class="company-header__action-icon company-header__text-icon">{{ actionIcons.import }}</span>
               </button>
               <a
                 class="ghost-link company-header__action-button company-header__action-button--icon"
                 :aria-label="contextualHeaderActionLabel"
                 :href="contextualHeaderActionHref"
-                :title="contextualHeaderActionLabel"
               >
-                <svg
-                  aria-hidden="true"
-                  class="company-header__action-icon"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    v-for="path in contextualHeaderIconPaths"
-                    :key="path"
-                    :d="path"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.9"
-                  />
-                </svg>
+                <span aria-hidden="true" class="company-header__action-icon company-header__text-icon">{{ actionIcons.filters }}</span>
               </a>
             </div>
             <div ref="headerMenuRef" class="company-header__menu-shell">
@@ -1124,7 +1015,6 @@ onBeforeUnmount(() => {
                 }"
                 type="button"
                 :aria-label="headerMenuButtonLabel"
-                :title="headerMenuButtonLabel"
                 @click="toggleHeaderMenu"
               >
                 <svg
@@ -1155,22 +1045,7 @@ onBeforeUnmount(() => {
                   type="button"
                   @click="handleAuthActionClick"
                 >
-                  <svg
-                    aria-hidden="true"
-                    class="company-header__menu-item-icon"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      v-for="path in authActionIconPaths"
-                      :key="path"
-                      :d="path"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.9"
-                    />
-                  </svg>
+                  <span aria-hidden="true" class="company-header__menu-item-icon company-header__text-icon">{{ actionIcons.auth }}</span>
                   <span>{{ authActionLabel }}</span>
                 </button>
                 <button
@@ -1179,22 +1054,7 @@ onBeforeUnmount(() => {
                   type="button"
                   @click="handleVacationsClick"
                 >
-                  <svg
-                    aria-hidden="true"
-                    class="company-header__menu-item-icon"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      v-for="path in vacationsIconPaths"
-                      :key="path"
-                      :d="path"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.9"
-                    />
-                  </svg>
+                  <span aria-hidden="true" class="company-header__menu-item-icon company-header__text-icon">{{ actionIcons.vacations }}</span>
                   <span>Vacaciones</span>
                 </button>
                 <button
@@ -1203,36 +1063,7 @@ onBeforeUnmount(() => {
                   type="button"
                   @click="handleImportReportsClick"
                 >
-                  <svg
-                    aria-hidden="true"
-                    class="company-header__menu-item-icon"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      d="M12 3v12"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.9"
-                    />
-                    <path
-                      d="m7.5 10.5 4.5 4.5 4.5-4.5"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.9"
-                    />
-                    <path
-                      d="M5 19h14"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.9"
-                    />
-                  </svg>
+                  <span aria-hidden="true" class="company-header__menu-item-icon company-header__text-icon">{{ actionIcons.import }}</span>
                   <span>Importar Excel</span>
                 </button>
 
@@ -1242,22 +1073,7 @@ onBeforeUnmount(() => {
                   type="button"
                   @click="handleUsersButtonClick"
                 >
-                  <svg
-                    aria-hidden="true"
-                    class="company-header__menu-item-icon"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      v-for="path in usersIconPaths"
-                      :key="path"
-                      :d="path"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.9"
-                    />
-                  </svg>
+                  <span aria-hidden="true" class="company-header__menu-item-icon company-header__text-icon">{{ actionIcons.users }}</span>
                   <span>{{ usersButtonLabel }}</span>
                 </button>
 
@@ -1267,22 +1083,7 @@ onBeforeUnmount(() => {
                   type="button"
                   @click="handleAsignadoButtonClick"
                 >
-                  <svg
-                    aria-hidden="true"
-                    class="company-header__menu-item-icon"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      v-for="path in asignadoIconPaths"
-                      :key="path"
-                      :d="path"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.9"
-                    />
-                  </svg>
+                  <span aria-hidden="true" class="company-header__menu-item-icon company-header__text-icon">{{ actionIcons.people }}</span>
                   <span>{{ asignadoButtonLabel }}</span>
                 </button>
 
@@ -1292,22 +1093,7 @@ onBeforeUnmount(() => {
                   type="button"
                   @click="handleBrandButtonClick"
                 >
-                  <svg
-                    aria-hidden="true"
-                    class="company-header__menu-item-icon"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      v-for="path in brandIconPaths"
-                      :key="path"
-                      :d="path"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.9"
-                    />
-                  </svg>
+                  <span aria-hidden="true" class="company-header__menu-item-icon company-header__text-icon">{{ actionIcons.brand }}</span>
                   <span>{{ brandButtonLabel }}</span>
                 </button>
 
@@ -1316,22 +1102,7 @@ onBeforeUnmount(() => {
                   :href="contextualHeaderActionHref"
                   @click="closeHeaderMenu"
                 >
-                  <svg
-                    aria-hidden="true"
-                    class="company-header__menu-item-icon"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      v-for="path in contextualHeaderIconPaths"
-                      :key="path"
-                      :d="path"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="1.9"
-                    />
-                  </svg>
+                  <span aria-hidden="true" class="company-header__menu-item-icon company-header__text-icon">{{ actionIcons.filters }}</span>
                   <span>{{ contextualHeaderActionLabel }}</span>
                 </a>
               </div>

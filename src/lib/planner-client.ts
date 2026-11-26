@@ -197,7 +197,7 @@ export function findDuplicateReferenceConflicts(
   const seen = new Map<string, PlannerReferenceLocation>();
   const conflicts: PlannerReferenceConflict[] = [];
 
-  for (const [dateKey, record] of Object.entries(normalizeRecordMap(days))) {
+  for (const [dateKey, record] of Object.entries(days)) {
     for (const entry of record.entries) {
       const reference = entry.referencia.trim();
       const normalizedReference = normalizePlannerReference(reference);

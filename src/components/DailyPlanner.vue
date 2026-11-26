@@ -9,6 +9,7 @@ import {
   watch,
 } from "vue";
 import LocalityAutocomplete from "./LocalityAutocomplete.vue";
+import AgendaIcon from "./AgendaIcon.vue";
 import {
   detectStorageMode,
   hasSupabaseConfig,
@@ -46,6 +47,10 @@ import {
   PLANNER_DATA_UPDATED_EVENT,
   dispatchPlannerSettingsUpdated,
   PLANNER_SETTINGS_UPDATED_EVENT,
+  PLANNER_FLOATING_AGENDA_ACTION_EVENT,
+  PLANNER_FLOATING_AGENDA_STATE_EVENT,
+  PLANNER_FLOATING_AGENDA_STATE_REQUEST_EVENT,
+  type PlannerFloatingAgendaAction,
 } from "../lib/planner-ui-events";
 import type {
   DayEntry,
@@ -179,6 +184,8 @@ function getXlsxModule() {
 }
 
 const selectedDate = ref(todayKey());
+const datePickerInput = ref<HTMLInputElement | null>(null);
+const supportsDatePicker = ref(false);
 const viewMode = ref<"day" | "month">("month");
 const dayRecord = ref<DayRecord>(createEmptyDay(selectedDate.value));
 const loading = ref(true);
@@ -212,6 +219,8 @@ const moveDialog = ref<{
 } | null>(null);
 const moveDialogError = ref("");
 const movingEntry = ref(false);
+const draggedMonthEntry = ref<{ dateKey: string; entryId: string } | null>(null);
+const monthDropTarget = ref("");
 const importDialogOpen = ref(false);
 const importRows = ref<ImportPreviewRow[]>([]);
 const importFileName = ref("");
@@ -242,6 +251,7 @@ let persistQueue = Promise.resolve();
 let backupInFlight = false;
 let backupQueued = false;
 let pendingEntryId = "";
+let pendingAddReport = false;
 const entryRowElements = new Map<string, HTMLElement>();
 
 const formattedTitle = computed(() => formatHeader(selectedDate.value));
@@ -684,7 +694,7 @@ function normalizePersonOption(value: string) {
   return value.trim().toLocaleLowerCase("es-ES");
 }
 
-function getPlannerPersonOptions() {
+const plannerPersonOptions = computed(() => {
   const optionsByNormalizedValue = new Map<string, string>();
   const addOption = (value: string) => {
     const trimmedValue = value.trim();
@@ -705,17 +715,19 @@ function getPlannerPersonOptions() {
   return [...optionsByNormalizedValue.values()].sort((left, right) =>
     left.localeCompare(right, "es", { sensitivity: "base" }),
   );
-}
+});
+
+const normalizedPlannerPersonOptions = computed(
+  () => new Set(plannerPersonOptions.value.map(normalizePersonOption)),
+);
 
 function getAsignadoSelectOptions(currentValue: string) {
-  const options = getPlannerPersonOptions();
+  const options = plannerPersonOptions.value;
   const normalizedCurrentValue = normalizePersonOption(currentValue);
 
   if (
     !normalizedCurrentValue ||
-    options.some(
-      (option) => normalizePersonOption(option) === normalizedCurrentValue,
-    )
+    normalizedPlannerPersonOptions.value.has(normalizedCurrentValue)
   ) {
     return options;
   }
@@ -725,9 +737,7 @@ function getAsignadoSelectOptions(currentValue: string) {
 
 function isAvailablePerson(value: string) {
   const normalizedValue = normalizePersonOption(value);
-  return getPlannerPersonOptions().some(
-    (option) => normalizePersonOption(option) === normalizedValue,
-  );
+  return normalizedPlannerPersonOptions.value.has(normalizedValue);
 }
 
 function getVacationsForPersonOnSelectedDate(person: string) {
@@ -1871,6 +1881,7 @@ function handleTextFieldFocus() {
 
 function handleTextFieldBlur() {
   isEditingTextField.value = false;
+  syncAllRecordsRecord(dayRecord.value);
   queueSave();
 }
 
@@ -2431,6 +2442,11 @@ async function initializePlannerDataForSession() {
     plannerDataLoadedForSession.value = true;
     hasInitialized.value = true;
     startBackupScheduleIfAllowed();
+    if (pendingAddReport && canEditReports.value) {
+      pendingAddReport = false;
+      openDayView();
+      await addRow();
+    }
   } catch (error) {
     console.error("No se pudo inicializar la agenda.", error);
     plannerLoadError.value =
@@ -2471,6 +2487,15 @@ function openDayView() {
   viewMode.value = "day";
 }
 
+function openDatePicker() {
+  if (hasReferenceSearch.value || !datePickerInput.value) return;
+  try {
+    datePickerInput.value.showPicker();
+  } catch {
+    datePickerInput.value.focus();
+  }
+}
+
 function openMonthView() {
   viewMode.value = "month";
   referenceFilter.value = "";
@@ -2503,6 +2528,7 @@ async function openDayFromReferenceResult(dateKey: string, entryId: string) {
 }
 
 function handleMonthCardClick(dateKey: string, event: MouseEvent) {
+  if (movingEntry.value) return;
   const target = event.target;
   const entryElement =
     target instanceof Element
@@ -2516,6 +2542,88 @@ function handleMonthCardClick(dateKey: string, event: MouseEvent) {
   }
 
   openDayFromMonth(dateKey);
+}
+
+function startMonthEntryDrag(event: DragEvent, dateKey: string, entryId: string) {
+  if (!canEditReports.value || movingEntry.value || !event.dataTransfer) {
+    event.preventDefault();
+    return;
+  }
+  draggedMonthEntry.value = { dateKey, entryId };
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", entryId);
+}
+
+function endMonthEntryDrag() {
+  draggedMonthEntry.value = null;
+  monthDropTarget.value = "";
+}
+
+function allowMonthDrop(event: DragEvent, dateKey: string) {
+  if (!canEditReports.value || movingEntry.value || !draggedMonthEntry.value ||
+      draggedMonthEntry.value.dateKey === dateKey) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+  monthDropTarget.value = dateKey;
+}
+
+function leaveMonthDrop(event: DragEvent, dateKey: string) {
+  if (event.currentTarget instanceof Element && event.relatedTarget instanceof Node &&
+      event.currentTarget.contains(event.relatedTarget)) return;
+  if (monthDropTarget.value === dateKey) monthDropTarget.value = "";
+}
+
+async function dropMonthEntry(event: DragEvent, targetDate: string) {
+  const dragged = draggedMonthEntry.value;
+  endMonthEntryDrag();
+  if (!dragged || !canEditReports.value || movingEntry.value || dragged.dateKey === targetDate) return;
+  event.preventDefault();
+  movingEntry.value = true;
+  plannerLoadError.value = "";
+  savingState.value = "saving";
+  try {
+    if (saveTimer || unsavedDayDrafts.value[dayRecord.value.dateKey]) {
+      if (saveTimer) window.clearTimeout(saveTimer);
+      saveTimer = undefined;
+      await persistDay();
+      if (savingState.value === "error") throw new Error("No se pudieron guardar los cambios pendientes antes de mover el informe.");
+    }
+    await persistQueue;
+    const source = cloneRecord(unsavedDayDrafts.value[dragged.dateKey] ?? await loadDay(dragged.dateKey));
+    const target = cloneRecord(unsavedDayDrafts.value[targetDate] ?? await loadDay(targetDate));
+    const entry = source.entries.find((item) => item.id === dragged.entryId);
+    if (!entry) throw new Error("El informe ya no está en el día de origen. Recarga la agenda y vuelve a intentarlo.");
+    if (target.entries.some((item) => item.id === entry.id)) throw new Error("El informe ya está en el día de destino.");
+    const sourceWithoutEntry = cloneRecord(source);
+    sourceWithoutEntry.entries = sourceWithoutEntry.entries.filter((item) => item.id !== entry.id);
+    const targetWithEntry = cloneRecord(target);
+    targetWithEntry.entries.push({ ...entry });
+    const { savedSource, savedTarget } = await saveMovedEntry(sourceWithoutEntry, target, targetWithEntry);
+    clearUnsavedDayDraft(dragged.dateKey);
+    clearUnsavedDayDraft(targetDate);
+    persistedAllRecords.value = {
+      ...persistedAllRecords.value,
+      [savedSource.dateKey]: cloneRecord(savedSource),
+      [savedTarget.dateKey]: cloneRecord(savedTarget),
+    };
+    syncMonthRecord(savedSource);
+    syncMonthRecord(savedTarget);
+    syncAllRecordsRecord(savedSource);
+    syncAllRecordsRecord(savedTarget);
+    if (viewMode.value === "month" && dayRecord.value.dateKey === dragged.dateKey) {
+      await applyLoadedDayRecord(savedSource);
+    } else if (viewMode.value === "month" && dayRecord.value.dateKey === targetDate) {
+      await applyLoadedDayRecord(savedTarget);
+    }
+    savingState.value = "saved";
+    queueDesktopBackup("entry-move");
+  } catch (error) {
+    console.error("No se pudo mover el informe.", error);
+    savingState.value = "error";
+    plannerLoadError.value = error instanceof Error ? error.message : "No se pudo mover el informe al día seleccionado.";
+  } finally {
+    movingEntry.value = false;
+  }
 }
 
 function summarizeDay(
@@ -2683,6 +2791,7 @@ function applyInitialNavigationState() {
   const params = new URLSearchParams(window.location.search);
   const dateParam = params.get("date")?.trim() ?? "";
   const entryParam = params.get("entry")?.trim() ?? "";
+  pendingAddReport = params.get("add") === "1";
 
   applyDefaultNavigationState();
 
@@ -2692,6 +2801,11 @@ function applyInitialNavigationState() {
   }
 
   pendingEntryId = entryParam;
+  if (pendingAddReport) {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("add");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  }
   clearInitialNavigationParams();
   return viewMode.value === "day";
 }
@@ -2762,6 +2876,27 @@ async function addRow() {
   queueSave();
   await nextTick();
   scrollToEntry(entry.id);
+  focusEntryField(entry.id);
+}
+
+function publishFloatingAgendaState() {
+  window.dispatchEvent(new CustomEvent(PLANNER_FLOATING_AGENDA_STATE_EVENT, {
+    detail: { viewMode: viewMode.value, ready: hasInitialized.value && !loading.value && dayRecord.value.dateKey === selectedDate.value },
+  }));
+}
+
+function handleFloatingAgendaAction(event: Event) {
+  if (!(event instanceof CustomEvent) || !hasInitialized.value) return;
+  const action = event.detail as PlannerFloatingAgendaAction;
+  if (action === "add") {
+    if (!canEditReports.value || loading.value || dayRecord.value.dateKey !== selectedDate.value) return;
+    openDayView();
+    void addRow();
+  } else if (action === "day") openDayView();
+  else if (action === "month") openMonthView();
+  else if (action === "previous") shiftDay(-1);
+  else if (action === "today") void jumpToToday();
+  else if (action === "next") shiftDay(1);
 }
 
 async function removeRow(id: string) {
@@ -2797,6 +2932,24 @@ function confirmRemoveRow() {
   }
 
   void removeRow(removeDialog.value.id);
+}
+
+async function saveMovedEntry(source: DayRecord, originalTarget: DayRecord, target: DayRecord) {
+  const savedTarget = await saveDay(target);
+  try {
+    const savedSource = await saveDay(source);
+    return { savedSource, savedTarget };
+  } catch (error) {
+    try {
+      const restoredTarget = await saveDay(originalTarget);
+      syncMonthRecord(restoredTarget);
+      syncAllRecordsRecord(restoredTarget);
+    } catch (rollbackError) {
+      console.error("No se pudo revertir el día de destino tras un error al mover.", rollbackError);
+      throw new Error("No se pudo completar el movimiento ni restaurar el día de destino. Revisa ambos días.");
+    }
+    throw error;
+  }
 }
 
 async function confirmMoveEntry() {
@@ -2845,38 +2998,24 @@ async function confirmMoveEntry() {
     const targetRecordWithEntry = cloneRecord(targetOriginalRecord);
     targetRecordWithEntry.entries.push({ ...entryToMove });
 
-    const savedTargetRecord = await saveDay(targetRecordWithEntry);
-
-    try {
-      const savedSourceRecord = await saveDay(sourceRecordWithoutEntry);
-
-      syncMonthRecord(savedTargetRecord);
-      syncAllRecordsRecord(savedTargetRecord);
-      await applyLoadedDayRecord(savedSourceRecord);
-      closeMoveDialog(true);
-      savingState.value = "saved";
-      queueDesktopBackup("entry-move");
-    } catch (error) {
-      console.error("No se pudo guardar el día de origen tras mover.", error);
-
-      try {
-        const restoredTargetRecord = await saveDay(targetOriginalRecord);
-        syncMonthRecord(restoredTargetRecord);
-        syncAllRecordsRecord(restoredTargetRecord);
-      } catch (rollbackError) {
-        console.error(
-          "No se pudo revertir el día de destino tras un error al mover.",
-          rollbackError,
-        );
-      }
-
-      throw error;
-    }
+    const { savedSource, savedTarget } = await saveMovedEntry(sourceRecordWithoutEntry, targetOriginalRecord, targetRecordWithEntry);
+    clearUnsavedDayDraft(savedSource.dateKey);
+    persistedAllRecords.value = {
+      ...persistedAllRecords.value,
+      [savedSource.dateKey]: cloneRecord(savedSource),
+      [savedTarget.dateKey]: cloneRecord(savedTarget),
+    };
+    syncMonthRecord(savedTarget);
+    syncAllRecordsRecord(savedTarget);
+    await applyLoadedDayRecord(savedSource);
+    closeMoveDialog(true);
+    savingState.value = "saved";
+    queueDesktopBackup("entry-move");
   } catch (error) {
     console.error("No se pudo mover el informe.", error);
     savingState.value = "error";
     moveDialogError.value =
-      error instanceof DuplicateReferenceError
+      error instanceof Error
         ? error.message
         : "No se pudo mover el informe al día seleccionado.";
   } finally {
@@ -2937,12 +3076,24 @@ watch(
       return;
     }
 
-    setUnsavedDayDraft(dayRecord.value);
     syncMonthRecord(dayRecord.value);
-    syncAllRecordsRecord(dayRecord.value);
+    if (!isEditingTextField.value) {
+      syncAllRecordsRecord(dayRecord.value);
+    }
     queueSave();
   },
   { deep: true },
+);
+
+// Reference validation must stay live while typing, but other text fields do
+// not require rescanning the entire history on every keystroke.
+watch(
+  () => dayRecord.value.entries.map((entry) => [entry.id, entry.referencia]),
+  () => {
+    if (!suppressAutoSave.value && isEditingTextField.value) {
+      syncAllRecordsRecord(dayRecord.value);
+    }
+  },
 );
 
 watch(activeReferenceConflictSummary, (nextMessage) => {
@@ -2989,9 +3140,14 @@ watch(canManageApp, (nextCanManageApp) => {
   stopBackupSchedule();
 });
 
+watch([viewMode, hasInitialized, loading, selectedDate, () => dayRecord.value.dateKey], publishFloatingAgendaState);
+
 onMounted(() => {
+  supportsDatePicker.value = typeof HTMLInputElement.prototype.showPicker === "function";
   window.addEventListener("keydown", handleWindowKeydown);
   window.addEventListener(PLANNER_DATA_UPDATED_EVENT, handlePlannerDataUpdated);
+  window.addEventListener(PLANNER_FLOATING_AGENDA_ACTION_EVENT, handleFloatingAgendaAction);
+  window.addEventListener(PLANNER_FLOATING_AGENDA_STATE_REQUEST_EVENT, publishFloatingAgendaState);
   window.addEventListener(
     PLANNER_SETTINGS_UPDATED_EVENT,
     handlePlannerSettingsUpdated,
@@ -3003,12 +3159,15 @@ onMounted(() => {
     typeof window !== "undefined" && window.desktopPlanner?.selectBackup,
   );
   applyInitialNavigationState();
+  publishFloatingAgendaState();
   void ensurePlannerAuthInitialized().then(() => {
     void initializePlannerDataForSession();
   });
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener(PLANNER_FLOATING_AGENDA_ACTION_EVENT, handleFloatingAgendaAction);
+  window.removeEventListener(PLANNER_FLOATING_AGENDA_STATE_REQUEST_EVENT, publishFloatingAgendaState);
   window.removeEventListener("keydown", handleWindowKeydown);
   window.removeEventListener(
     PLANNER_DATA_UPDATED_EVENT,
@@ -3083,124 +3242,69 @@ onBeforeUnmount(() => {
         </button>
       </div>
 
-      <section
-        class="sheet-toolbar"
-        :class="{
-          'sheet-toolbar--day': viewMode === 'day',
-          'sheet-toolbar--month': viewMode === 'month',
-          'sheet-toolbar--search-active': hasReferenceSearch,
-        }"
-      >
-        <div class="view-switch">
-          <button
-            class="ghost-button"
-            :class="{ 'is-active': viewMode === 'day' }"
-            type="button"
-            @click="openDayView"
-          >
-            Vista diaria
-          </button>
-          <button
-            class="ghost-button"
-            :class="{ 'is-active': viewMode === 'month' }"
-            type="button"
-            @click="openMonthView"
-          >
-            Vista mensual
-          </button>
-        </div>
+      <section class="agenda-toolbar" aria-label="Controles de la agenda">
+        <label class="agenda-toolbar__search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5" /></svg>
+          <input v-model="referenceFilter" type="search" aria-label="Buscar por referencia" placeholder="Buscar referencia" />
+        </label>
 
-        <div class="toolbar-group toolbar-group--navigation">
-          <button
-            class="ghost-button"
-            :disabled="hasReferenceSearch"
-            type="button"
-            @click="shiftDay(-1)"
-          >
-            {{ viewMode === "day" ? "Día anterior" : "Mes anterior" }}
+        <div class="agenda-toolbar__controls">
+        <div class="agenda-toolbar__navigation" aria-label="Navegación de fechas">
+          <button class="agenda-toolbar__icon-button agenda-tooltip" type="button"
+            :aria-label="viewMode === 'day' ? 'Día anterior' : 'Mes anterior'"
+            :data-tooltip="viewMode === 'day' ? 'Día anterior' : 'Mes anterior'"
+            :disabled="hasReferenceSearch" @click="shiftDay(-1)">
+            <AgendaIcon name="previous" />
           </button>
-          <button
-            class="ghost-button"
-            :class="{ 'is-today': isTodaySelected }"
-            :disabled="hasReferenceSearch"
-            type="button"
-            @click="jumpToToday"
-          >
-            Hoy
+          <button class="agenda-toolbar__icon-button agenda-tooltip" :class="{ 'is-today': isTodaySelected }"
+            type="button" aria-label="Ir a hoy" data-tooltip="Ir a hoy"
+            :disabled="hasReferenceSearch" @click="jumpToToday">
+            <AgendaIcon name="today" />
           </button>
-          <button
-            class="ghost-button"
-            :disabled="hasReferenceSearch"
-            type="button"
-            @click="shiftDay(1)"
-          >
-            {{ viewMode === "day" ? "Día siguiente" : "Mes siguiente" }}
+          <button class="agenda-toolbar__icon-button agenda-tooltip" type="button"
+            :aria-label="viewMode === 'day' ? 'Día siguiente' : 'Mes siguiente'"
+            :data-tooltip="viewMode === 'day' ? 'Día siguiente' : 'Mes siguiente'"
+            :disabled="hasReferenceSearch" @click="shiftDay(1)">
+            <AgendaIcon name="next" />
           </button>
-        </div>
-
-        <div class="toolbar-group toolbar-group--search">
-          <label class="field toolbar-search">
-            <input
-              v-model="referenceFilter"
-              type="text"
-              placeholder="Busca por referencia"
-            />
-          </label>
-        </div>
-
-        <div class="toolbar-group toolbar-group--date">
-          <label class="date-field">
-            <input
-              v-model="selectedDate"
-              :disabled="hasReferenceSearch"
-              type="date"
-            />
-          </label>
-        </div>
-      </section>
-
-      <section
-        v-if="viewMode === 'month' && normalizedReferenceFilter.length === 0"
-        class="month-summary month-summary--month"
-      >
-        <div class="month-summary__header">
-          <h3>{{ formattedMonthTitle }}</h3>
-        </div>
-      </section>
-      <section
-        v-else-if="viewMode === 'day' && normalizedReferenceFilter.length === 0"
-        class="month-summary month-summary--day"
-      >
-        <div class="month-summary__header">
-          <div class="month-summary__copy">
-            <h3>{{ formattedTitle }}</h3>
-            <!-- <div
-              v-if="selectedDateVacationBadges.length > 0"
-              class="day-vacation-badges"
-            >
-              <span
-                v-for="vacationBadge in selectedDateVacationBadges"
-                :key="vacationBadge.id"
-                class="day-vacation-badge"
-              >
-                {{ vacationBadge.label }}
-              </span>
-            </div> -->
-          </div>
-          <div
-            v-if="canEditReports"
-            class="month-summary__tools month-summary__tools--day"
-          >
-            <button
-              class="primary-button month-summary__action"
-              type="button"
-              @click="addRow"
-            >
-              Añadir informe
+          <div class="agenda-toolbar__date">
+            <button v-if="supportsDatePicker" class="agenda-toolbar__icon-button agenda-tooltip" type="button"
+              :aria-label="`Elegir fecha, ${formattedTitle}`" data-tooltip="Elegir fecha" :disabled="hasReferenceSearch" @click="openDatePicker">
+              <AgendaIcon name="month" />
             </button>
+            <input ref="datePickerInput" v-model="selectedDate" type="date" aria-label="Elegir fecha"
+              :class="{ 'agenda-toolbar__native-date--picker': supportsDatePicker }"
+              :tabindex="supportsDatePicker ? -1 : undefined" :aria-hidden="supportsDatePicker ? 'true' : undefined"
+              :disabled="hasReferenceSearch" />
           </div>
         </div>
+
+        <div class="agenda-toolbar__views" aria-label="Vista de la agenda">
+          <button class="agenda-toolbar__view agenda-tooltip" type="button" aria-label="Vista diaria" data-tooltip="Vista diaria"
+            :class="{ 'is-active': viewMode === 'day' }" :aria-pressed="viewMode === 'day'" @click="openDayView">
+            <AgendaIcon name="day" />
+          </button>
+          <button class="agenda-toolbar__view agenda-tooltip" type="button" aria-label="Vista mensual" data-tooltip="Vista mensual"
+            :class="{ 'is-active': viewMode === 'month' }" :aria-pressed="viewMode === 'month'" @click="openMonthView">
+            <AgendaIcon name="month" />
+          </button>
+        </div>
+        </div>
+        <h1 class="agenda-toolbar__date-label">{{ viewMode === "day" ? formattedTitle : formattedMonthTitle }}</h1>
       </section>
+
+      <header
+        v-if="!hasReferenceSearch && viewMode === 'day' && canEditReports && !isCurrentViewLoading && dayRecord.entries.length > 0"
+        class="agenda-content-header"
+      >
+        <button
+          class="primary-button agenda-content-header__add"
+          type="button"
+          @click="addRow"
+        >
+          <span aria-hidden="true">+</span> Añadir informe
+        </button>
+      </header>
 
       <section v-if="normalizedReferenceFilter.length" class="filter-panel">
         <div v-if="filteredReferenceResults.length" class="filter-results">
@@ -3270,7 +3374,11 @@ onBeforeUnmount(() => {
               'is-empty': !cell,
               'is-selected': cell?.dateKey === selectedDate,
               'is-today': cell?.isToday,
+              'is-drop-target': cell && monthDropTarget === cell.dateKey,
             }"
+            @dragover="cell && allowMonthDrop($event, cell.dateKey)"
+            @dragleave="cell && leaveMonthDrop($event, cell.dateKey)"
+            @drop="cell && dropMonthEntry($event, cell.dateKey)"
           >
             <template v-if="cell">
               <button
@@ -3311,6 +3419,11 @@ onBeforeUnmount(() => {
                       .preview"
                     :key="item.id"
                     :data-month-entry-id="item.id"
+                    :draggable="canEditReports && !movingEntry"
+                    :class="{ 'is-dragging': draggedMonthEntry?.entryId === item.id && draggedMonthEntry?.dateKey === cell.dateKey }"
+                    :title="canEditReports ? 'Arrastra el informe a otro día' : undefined"
+                    @dragstart="startMonthEntryDrag($event, cell.dateKey, item.id)"
+                    @dragend="endMonthEntryDrag"
                   >
                     <div class="month-card__entry-top">
                       <em>{{ item.referencia }}</em>

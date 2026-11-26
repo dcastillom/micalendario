@@ -10,6 +10,15 @@ export const PLANNER_OPEN_IMPORT_DIALOG_EVENT = "planner:open-import-dialog";
 export const PLANNER_OPEN_VACATIONS_DIALOG_EVENT =
   "planner:open-vacations-dialog";
 export const PLANNER_DATA_UPDATED_EVENT = "planner:data-updated";
+export const PLANNER_FLOATING_AGENDA_ACTION_EVENT = "planner:floating-agenda-action";
+export const PLANNER_FLOATING_AGENDA_STATE_EVENT = "planner:floating-agenda-state";
+export const PLANNER_FLOATING_AGENDA_STATE_REQUEST_EVENT = "planner:floating-agenda-state-request";
+
+export type PlannerFloatingAgendaAction = "add" | "day" | "month" | "previous" | "today" | "next";
+export interface PlannerFloatingAgendaState {
+  viewMode: PlannerAgendaViewMode;
+  ready: boolean;
+}
 
 export type PlannerAgendaViewMode = "day" | "month";
 
